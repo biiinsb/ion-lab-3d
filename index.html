@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Ion Lab 3D — 전자를 직접 움직이며 깨닫는 이온의 원리</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ── 상단 공통 영역 (PRD 6.1) ─────────────────────────────── -->
+<header class="topbar">
+    <div class="brand">
+        <span class="brand-mark" aria-hidden="true">⚛</span>
+        <span class="brand-text">
+            <strong>Ion Lab 3D</strong>
+            <small>전자를 직접 움직이며 깨닫는 이온의 원리</small>
+        </span>
+    </div>
+
+    <nav class="tabs" role="tablist" aria-label="활동 선택">
+        <button class="tab is-active" role="tab" aria-selected="true" data-view="ion">이온 만들기</button>
+        <button class="tab" role="tab" aria-selected="false" data-view="compound">화합물 만들기</button>
+    </nav>
+
+    <div class="topbar-actions">
+        <div class="mode-switch" role="radiogroup" aria-label="학습 모드">
+            <button class="mode is-active" role="radio" aria-checked="true" data-mode="explore">자유 탐색</button>
+            <button class="mode" role="radio" aria-checked="false" data-mode="practice">연습</button>
+        </div>
+        <button class="icon-btn" id="soundBtn" aria-pressed="true" title="소리 끄기">🔊<span class="sr-only">소리 켜기·끄기</span></button>
+        <button class="icon-btn" id="helpBtn" title="도움말">?<span class="sr-only">도움말</span></button>
+        <button class="icon-btn" id="restartBtn" title="처음부터">⟲<span class="sr-only">처음부터</span></button>
+    </div>
+</header>
+
+<!-- ── 이온 만들기 화면 (Blueprint p.5) ──────────────────────── -->
+<main class="view is-active" id="view-ion">
+
+    <!-- ① 좌측: 원소 선택 패널 -->
+    <aside class="panel panel-elements">
+        <h2 class="panel-title">원소 선택 <small>1~20번</small></h2>
+
+        <div class="ptable" id="periodicTable" role="group" aria-label="원자번호 1번부터 20번까지의 주기율표"></div>
+
+        <ul class="legend">
+            <li><span class="swatch cat-metal"></span>금속</li>
+            <li><span class="swatch cat-nonmetal"></span>비금속</li>
+            <li><span class="swatch cat-metalloid"></span>준금속</li>
+            <li><span class="swatch cat-noble-gas"></span>비활성 기체</li>
+        </ul>
+        <p class="legend-note">
+            빗금 표시(<span class="hatch-sample"></span>)는 이번 활동에서 이온을 만들지 않는 설명 전용 원소입니다.
+        </p>
+    </aside>
+
+    <!-- ② 중앙: 3D 원자 모형 -->
+    <section class="stage">
+        <div class="mission" id="missionBar" hidden>
+            <span class="mission-tag">미션</span>
+            <span id="missionText">—</span>
+            <button class="btn btn-ghost btn-sm" id="newMissionBtn">새 문제</button>
+        </div>
+
+        <div class="canvas-shell">
+            <canvas id="atomCanvas" aria-label="3D 원자 모형. 최외각 전자를 드래그하여 이동할 수 있습니다."></canvas>
+
+            <div class="canvas-tools" role="group" aria-label="모형 보기 조절">
+                <button class="tool" id="zoomInBtn" title="확대">＋</button>
+                <button class="tool" id="zoomOutBtn" title="축소">－</button>
+                <button class="tool" id="resetViewBtn" title="원래 위치로">⌂</button>
+                <button class="tool is-active" id="spinBtn" aria-pressed="true" title="전자 공전 켜기·끄기">↻</button>
+            </div>
+
+            <div class="canvas-hint" id="canvasHint">빈 곳을 끌면 모형이 돌아갑니다 · 최외각 전자를 끌어 보관함으로</div>
+        </div>
+
+        <!-- ④ 하단: 전자 보관함 -->
+        <div class="well-row">
+            <div class="well" id="electronWell" aria-label="전자 보관함. 제거한 전자가 모이고, 여기서 전자를 끌어 원자에 추가합니다.">
+                <div class="well-head">
+                    <span class="well-title">전자 보관함</span>
+                    <span class="well-count"><strong id="wellCount">0</strong>개</span>
+                </div>
+                <div class="well-body" id="wellBody"></div>
+                <p class="well-help">전자를 여기로 끌면 잃고, 여기서 끌어내면 얻습니다.</p>
+            </div>
+
+            <div class="stage-actions">
+                <button class="btn btn-primary" id="checkBtn">정답 확인</button>
+                <button class="btn btn-ghost" id="hintBtn">힌트 <span class="hint-stage" id="hintStage"></span></button>
+                <button class="btn btn-ghost" id="resetAtomBtn">초기화</button>
+            </div>
+        </div>
+
+        <p class="model-note">
+            <strong>학습용 모형 안내</strong> — 이 앱의 전자 껍질 모형은 원자와 이온의 전자 수를 쉽게 이해하기 위한
+            학습 모형입니다. 실제 전자가 행성처럼 일정한 원형 궤도를 도는 것은 아닙니다.
+        </p>
+    </section>
+
+    <!-- ③ 우측: 실시간 정보 패널 -->
+    <aside class="panel panel-info">
+        <div class="element-head">
+            <div class="element-symbol" id="elemSymbol">Na</div>
+            <div class="element-meta">
+                <span class="element-name" id="elemName">나트륨</span>
+                <span class="element-sub" id="elemSub">원자번호 11 · 금속</span>
+            </div>
+        </div>
+
+        <div class="charge-card" id="chargeCard">
+            <span class="charge-label">현재 상태</span>
+            <span class="charge-value" id="chargeValue">중성 원자</span>
+            <span class="charge-eq" id="chargeEq">11 − 11 = 0</span>
+        </div>
+
+        <div class="balance" aria-hidden="true">
+            <span class="balance-end proton">양성자 +</span>
+            <div class="balance-track"><div class="balance-knob" id="balanceKnob"></div></div>
+            <span class="balance-end electron">− 전자</span>
+        </div>
+
+        <h3 class="sub-title">기본 정보</h3>
+        <dl class="stat-list">
+            <div><dt><span class="dot proton"></span>양성자 수</dt><dd id="statProtons">11</dd></div>
+            <div><dt><span class="dot neutron"></span>중성자 수</dt><dd id="statNeutrons">12</dd></div>
+            <div><dt><span class="dot electron"></span>전자 수</dt><dd id="statElectrons">11</dd></div>
+            <div><dt>이온식</dt><dd id="statIonFormula">—</dd></div>
+        </dl>
+
+        <h3 class="sub-title">전자 배치</h3>
+        <ul class="shell-list" id="shellList"></ul>
+
+        <h3 class="sub-title">목표</h3>
+        <p class="goal-box" id="goalBox">—</p>
+
+        <div class="feedback" id="feedback" role="status" aria-live="polite" hidden></div>
+    </aside>
+</main>
+
+<!-- ── 화합물 만들기 화면 (Blueprint p.9) ────────────────────── -->
+<main class="view view-compound" id="view-compound">
+    <aside class="panel panel-cards">
+        <h2 class="panel-title cation">양이온</h2>
+        <div class="card-list" id="cationCards"></div>
+    </aside>
+
+    <section class="stage stage-compound">
+        <div class="combine-head">
+            <h2 class="panel-title">이온 결합 실험실</h2>
+            <p class="combine-desc">
+                양이온과 음이온 카드를 아래로 끌어다 놓으세요. <strong>총전하가 0</strong>이 되고
+                이온의 개수비가 <strong>가장 간단한 정수비</strong>일 때 화합물이 완성됩니다.
+            </p>
+        </div>
+
+        <div class="dropzone" id="dropzone" aria-label="이온 결합 영역">
+            <p class="dropzone-empty" id="dropzoneEmpty">이곳으로 이온 카드를 끌어다 놓거나 카드를 클릭하세요.</p>
+            <div class="dropzone-ions" id="dropzoneIons"></div>
+        </div>
+
+        <div class="charge-sum">
+            <div class="charge-sum-math">
+                <span class="sum-label">총전하</span>
+                <span class="sum-eq" id="sumEq">(+0) + (0) = 0</span>
+            </div>
+            <div class="charge-sum-status" id="sumStatus">이온을 추가하세요</div>
+            <button class="btn btn-ghost btn-sm" id="clearZoneBtn">비우기</button>
+        </div>
+
+        <div class="feedback" id="compoundFeedback" role="status" aria-live="polite" hidden></div>
+
+        <div class="checklist">
+            <h3 class="sub-title">완성한 화합물 <span id="checklistCount">0 / 8</span></h3>
+            <ul class="checklist-items" id="checklistItems"></ul>
+        </div>
+    </section>
+
+    <aside class="panel panel-cards">
+        <h2 class="panel-title anion">음이온</h2>
+        <div class="card-list" id="anionCards"></div>
+    </aside>
+</main>
+
+<!-- ── 결과 모달 ────────────────────────────────────────────── -->
+<div class="modal-overlay" id="modalOverlay" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+        <div class="modal-icon" id="modalIcon">✓</div>
+        <h3 class="modal-title" id="modalTitle">성공!</h3>
+        <div class="modal-formula" id="modalFormula"></div>
+        <div class="modal-body" id="modalBody"></div>
+        <button class="btn btn-primary modal-btn" id="modalBtn">확인</button>
+    </div>
+</div>
+
+<!-- ── 도움말 ───────────────────────────────────────────────── -->
+<div class="modal-overlay" id="helpOverlay" hidden>
+    <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+        <h3 class="modal-title" id="helpTitle">사용 방법</h3>
+        <div class="modal-body help-body">
+            <ol>
+                <li><strong>원소 선택</strong> — 왼쪽 주기율표에서 1~20번 원소를 고릅니다.</li>
+                <li><strong>전자 조작</strong> — 가장 바깥쪽 껍질(최외각)의 전자만 끌 수 있습니다.
+                    전자를 <em>전자 보관함</em>으로 끌면 잃고, 보관함에서 궤도로 끌면 얻습니다.</li>
+                <li><strong>실시간 판정</strong> — 오른쪽 패널에서 전자 수와 전하가 즉시 갱신됩니다.</li>
+                <li><strong>상태 완성</strong> — 안정한 전자 배치가 되면 이온식과 전하 계산식이 나타납니다.</li>
+            </ol>
+            <h4>왜 안쪽 전자는 움직이지 않나요?</h4>
+            <p>안쪽 껍질의 전자는 원자핵에 더 강하게 묶여 있습니다. 이온이 만들어질 때 실제로 이동하는 것은
+               가장 바깥쪽 껍질의 전자입니다.</p>
+            <h4>학습 모드</h4>
+            <p><strong>자유 탐색</strong>은 정답 판정 없이 마음껏 전자를 넣고 빼며 전하 변화를 관찰합니다.
+               <strong>연습</strong>은 시스템이 목표 원소를 제시하고, 단계별 힌트와 진단 피드백을 제공합니다.</p>
+            <h4>모형의 한계</h4>
+            <p>이 앱의 껍질 모형은 학습용 추상화입니다. 실제 전자는 행성 궤도처럼 정해진 원을 돌지 않습니다.</p>
+        </div>
+        <button class="btn btn-primary modal-btn" id="helpCloseBtn">닫기</button>
+    </div>
+</div>
+
+<!-- 즉시 피드백 토스트 -->
+<div class="toast" id="toast" role="status" aria-live="assertive" hidden></div>
+
+<!-- 성공 연출용 오버레이 (외부 CDN 의존 없음 — 학교 오프라인망 대비) -->
+<canvas class="celebrate" id="celebrateCanvas" aria-hidden="true"></canvas>
+
+<script src="atoms.js"></script>
+<script src="rules.js"></script>
+<script src="canvas-engine.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

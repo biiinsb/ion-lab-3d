@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head><meta charset="UTF-8"><title>Ion Lab 3D — 통합 테스트</title>
+<style>
+  body { font: 13px/1.6 "Malgun Gothic", monospace; margin: 0; padding: 16px; }
+  #out { white-space: pre-wrap; }
+  #out.blocked { background: #fdeded; border: 1px solid #f0bfbf; color: #942929;
+                 padding: 14px 16px; border-radius: 8px; }
+  h1 { font-size: 15px; margin: 0 0 4px; }
+  .lead { color: #6b7d91; margin: 0 0 14px; font-size: 12.5px; }
+  #f { width: 1280px; height: 900px; border: 1px solid #dde4ed; border-radius: 8px; }
+</style></head>
+<body>
+<h1>Ion Lab 3D — 통합 테스트</h1>
+<p class="lead">이 페이지는 테스트 하네스입니다. 앱 자체를 쓰려면 <a href="../index.html">index.html</a>을 여세요.
+아래 앱 화면은 테스트가 검사하려고 iframe으로 띄운 것입니다.</p>
+<pre id="out">running…</pre>
+<iframe id="f" src="../index.html"></iframe>
+<script>
+const L = []; let pass = 0, fail = 0; const fails = [];
+const log = s => L.push(s);
+function ok(name, cond, detail='') { if (cond) pass++; else { fail++; fails.push(name + (detail ? ' — ' + detail : '')); } }
+function eq(name, a, b) { ok(name, JSON.stringify(a) === JSON.stringify(b), `기대 ${JSON.stringify(b)}, 실제 ${JSON.stringify(a)}`); }
+const done = () => {
+    log('\n' + '='.repeat(50));
+    log(`RESULT 통과 ${pass} · 실패 ${fail}`);
+    log('='.repeat(50));
+    if (fail) { log('실패 항목:'); fails.forEach(f => log('  X ' + f)); }
+    document.getElementById('out').textContent = L.join('\n');
+};
+
+const f = document.getElementById('f');
+f.addEventListener('load', () => setTimeout(run, 700));
+
+/** iframe 안을 들여다볼 수 없으면 그 이유를 알려주고 멈춘다. */
+function checkAccess() {
+    let d = null;
+    try { d = f.contentDocument; } catch (e) { /* 교차 출처 접근 차단 */ }
+    if (d && d.getElementById('atomCanvas')) return true;
+
+    const viaFile = location.protocol === 'file:';
+    document.getElementById('out').className = 'blocked';
+    document.getElementById('out').textContent =
+        '테스트를 실행할 수 없습니다 — iframe 안의 index.html에 접근이 차단되었습니다.\n\n' +
+        (viaFile
+            ? 'file:// 로 열면 Chrome이 파일마다 별도의 출처로 취급해서, 이 페이지가\n' +
+              'iframe 안의 문서를 읽을 수 없습니다. 다음 중 하나로 실행하세요.\n\n' +
+              '  1) 로컬 서버로 열기 (권장)\n' +
+              '       py -m http.server 8000\n' +
+              '       → http://localhost:8000/tests/app.test.html\n\n' +
+              '  2) Chrome에 플래그를 주고 열기\n' +
+              '       chrome.exe --allow-file-access-from-files "' + location.href + '"\n\n' +
+              '단위 테스트(rules.test.html)는 iframe을 쓰지 않으므로 그냥 열어도 실행됩니다.'
+            : 'index.html을 불러오지 못했거나 앱 초기화 중 오류가 났습니다.\n' +
+              '개발자 도구 콘솔을 확인하세요.');
+    return false;
+}
+
+function run() {
+    if (!checkAccess()) return;
+
+    const w = f.contentWindow, d = f.contentDocument;
+    const ev = (src) => w.eval(src);
+    const canvas = d.getElementById('atomCanvas');
+
+    // 궤도 애니메이션을 멈춰 전자 위치를 결정적으로 만든다
+    ev('engine.setAnimateOrbit(false)');
+    ev('selectElement(11)');       // 나트륨
+    ev('applyMode("practice")');   // 연습 모드 (판정 활성)
+    ev('selectElement(11)');
+    ev('engine.setAnimateOrbit(false)');
+
+    // 캔버스 위치는 모드에 따라 달라진다(미션 바 노출 여부). 매번 다시 잰다.
+    const at = (shell, slot) => {
+        const r = canvas.getBoundingClientRect();
+        const o = JSON.parse(ev(`JSON.stringify(engine.getSlotScreenPos(${shell}, ${slot}))`));
+        return { x: r.left + o.x, y: r.top + o.y };
+    };
+    const mouse = (type, target, x, y) => target.dispatchEvent(
+        new w.MouseEvent(type, { clientX: x, clientY: y, bubbles: true, cancelable: true }));
+
+    log('== A. 초기 상태 ==');
+    eq('선택 원소', ev('state.element.symbol'), 'Na');
+    eq('초기 전자 배치', JSON.parse(ev('JSON.stringify(engine.getShells())')), [2, 8, 1]);
+    eq('연습 모드 보관함 초기값', ev('state.well'), 3);
+    eq('정답확인 버튼 노출', d.getElementById('checkBtn').hidden, false);
+    eq('힌트 버튼 노출', d.getElementById('hintBtn').hidden, false);
+    eq('미션 바 노출', d.getElementById('missionBar').hidden, false);
+
+    log('\n== B. PRD 7.1 — 내각 전자는 집히지 않는다 ==');
+    // 이전 구현에서는 K껍질 전자도 자유롭게 뽑을 수 있었다.
+    const k0 = at(0, 0);
+    mouse('mousedown', canvas, k0.x, k0.y);
+    ok('K껍질 전자 mousedown → 집히지 않음', ev('engine.draggedElectron') === null);
+    eq('  전자 배치 불변', JSON.parse(ev('JSON.stringify(engine.getShells())')), [2, 8, 1]);
+    ok('  내각 안내 토스트 표시', d.getElementById('toast').hidden === false);
+    ok('  안내 문구 내용', /최외각 전자만/.test(d.getElementById('toast').textContent));
+    mouse('mouseup', w, k0.x, k0.y);
+
+    const l0 = at(1, 0);
+    mouse('mousedown', canvas, l0.x, l0.y);
+    ok('L껍질(내각) 전자도 집히지 않음', ev('engine.draggedElectron') === null);
+    eq('  전자 배치 불변', JSON.parse(ev('JSON.stringify(engine.getShells())')), [2, 8, 1]);
+    mouse('mouseup', w, l0.x, l0.y);
+
+    log('\n== C. 최외각 전자 제거 → Na⁺ ==');
+    const m0 = at(2, 0);
+    mouse('mousedown', canvas, m0.x, m0.y);
+    ok('M껍질(최외각) 전자 집힘', ev('engine.draggedElectron') !== null);
+
+    const well = d.getElementById('electronWell');
+    const wr = well.getBoundingClientRect();
+    const wc = { x: wr.left + wr.width / 2, y: wr.top + wr.height / 2 };
+    mouse('mousemove', w, wc.x, wc.y);
+    ok('보관함 위 호버 표시', well.classList.contains('is-hover'));
+    mouse('mouseup', w, wc.x, wc.y);
+
+    eq('전자 배치 → [2,8,0]', JSON.parse(ev('JSON.stringify(engine.getShells())')), [2, 8, 0]);
+    eq('전자 수 → 10', ev('engine.getElectronCount()'), 10);
+    eq('보관함 +1 → 4', ev('state.well'), 4);
+    eq('정보 패널 전자 수', d.getElementById('statElectrons').textContent, '10');
+    eq('정보 패널 전하 계산식', d.getElementById('chargeEq').textContent, '11 − 10 = +1');
+    eq('정보 패널 상태', d.getElementById('chargeValue').textContent, '+1 양이온');
+    eq('정보 패널 이온식', d.getElementById('statIonFormula').textContent, 'Na⁺');
+    ok('전하 카드 양이온 스타일', d.getElementById('chargeCard').classList.contains('is-cation'));
+
+    log('\n== D. 정답 확인 → 성공 모달 ==');
+    d.getElementById('checkBtn').click();
+    ok('성공 모달 열림', d.getElementById('modalOverlay').hidden === false);
+    ok('  모달에 Na⁺ 표기', /Na⁺/.test(d.getElementById('modalFormula').textContent));
+    ok('  전하 계산식 노출', /11 − 10 = \+1/.test(d.getElementById('modalBody').textContent));
+    ok('  이온 이름 노출', /나트륨 이온/.test(d.getElementById('modalBody').textContent));
+    ok('  전자 배치 노출', /2, 8/.test(d.getElementById('modalBody').textContent));
+    ev('closeModal()');
+
+    log('\n== E. Na⁺ 상태에서는 L껍질이 새 최외각 ==');
+    const l0b = at(1, 0);
+    mouse('mousedown', canvas, l0b.x, l0b.y);
+    ok('L껍질 전자가 이제 집힘', ev('engine.draggedElectron') !== null);
+    mouse('mouseup', w, m0.x, m0.y); // 아무 데도 안 놓음 → 원위치 복귀
+    eq('  안착 실패 시 원위치 복귀', JSON.parse(ev('JSON.stringify(engine.getShells())')), [2, 8, 0]);
+
+    log('\n== F. PRD 19 — Na에 전자 주입 시 방향 오류 ==');
+    ev('selectElement(11)');
+    ev('engine.setAnimateOrbit(false)');
+    const wellE = d.querySelector('.well-e');
+    ok('보관함에 전자 칩 존재', !!wellE);
+    mouse('mousedown', wellE, wr.left + 20, wr.top + 20);
+    ok('보관함에서 전자 집힘', ev('engine.draggedElectron') !== null);
+    eq('  보관함 개수 감소', ev('state.well'), 2);
+
+    const m1 = at(2, 1); // M껍질의 빈 슬롯
+    mouse('mousemove', w, m1.x, m1.y);
+    mouse('mouseup', w, m1.x, m1.y);
+    eq('전자 배치 → [2,8,2]', JSON.parse(ev('JSON.stringify(engine.getShells())')), [2, 8, 2]);
+    eq('전하 → −1 음이온', d.getElementById('chargeValue').textContent, '-1 음이온');
+    ok('방향 오류 즉시 피드백', /어느 쪽이 더 적을까요/.test(d.getElementById('toast').textContent),
+        d.getElementById('toast').textContent);
+
+    log('\n== G. PRD 7.3 — 껍질 수용량 초과 차단 ==');
+    ev('selectElement(2)');  // He: K껍질 2/2로 가득 참
+    ev('engine.setAnimateOrbit(false)');
+    eq('He 배치', JSON.parse(ev('JSON.stringify(engine.getShells())')), [2]);
+    ok('He 조작 비활성', ev('engine.interactive') === false);
+    const he0 = at(0, 0);
+    mouse('mousedown', canvas, he0.x, he0.y);
+    ok('비활성 기체 전자 집히지 않음', ev('engine.draggedElectron') === null);
+    mouse('mouseup', w, he0.x, he0.y);
+    ok('비활성 기체 안내 피드백', /이미 채워져 있어/.test(d.getElementById('feedback').textContent));
+
+    log('\n== H. 터치 입력 (PRD DoD-2) ==');
+    // 이전 구현은 touchend에서 changedTouches를 읽지 않아 좌표가 undefined였고,
+    // 그 결과 터치로는 전자를 버리는 동작이 성립하지 않았다.
+    ev('selectElement(17)'); // Cl [2,8,7]
+    ev('engine.setAnimateOrbit(false)');
+    const c0 = at(2, 0);
+    const mkTouch = (x, y) => new w.Touch({ identifier: 1, target: canvas, clientX: x, clientY: y });
+    const touch = (type, target, x, y) => {
+        const t = mkTouch(x, y);
+        target.dispatchEvent(new w.TouchEvent(type, {
+            touches: type === 'touchend' ? [] : [t],
+            targetTouches: type === 'touchend' ? [] : [t],
+            changedTouches: [t], bubbles: true, cancelable: true
+        }));
+    };
+    touch('touchstart', canvas, c0.x, c0.y);
+    ok('터치로 최외각 전자 집힘', ev('engine.draggedElectron') !== null);
+    touch('touchmove', w, wc.x, wc.y);
+    touch('touchend', w, wc.x, wc.y);
+    eq('터치로 전자 제거됨 → [2,8,6]', JSON.parse(ev('JSON.stringify(engine.getShells())')), [2, 8, 6]);
+    eq('  Cl 전자 제거 → 방향 오류 진단', ev('Rules.evaluate(state.element, engine.getShells()).status'), 'direction');
+
+    log('\n== I. 힌트 3단계 (PRD 8.3) ==');
+    ev('selectElement(11)');
+    const hintBtn = d.getElementById('hintBtn'), fb = d.getElementById('feedback');
+    hintBtn.click();
+    eq('1단계 표시', ev('state.hintStage'), 1);
+    ok('  현상 파악 질문', /몇 개인가요/.test(fb.textContent), fb.textContent);
+    ok('  정답 미노출', !/1개를 잃어 보세요/.test(fb.textContent));
+    hintBtn.click();
+    ok('2단계 목표 유도', /할까요/.test(fb.textContent), fb.textContent);
+    hintBtn.click();
+    eq('3단계 도달', ev('state.hintStage'), 3);
+    ok('  직접 지시', /전자 1개를 잃어 보세요/.test(fb.textContent), fb.textContent);
+    eq('  힌트 단계 배지', d.getElementById('hintStage').textContent, '3/3');
+
+    log('\n== J. 화합물 탭 (PRD 11) ==');
+    ev('switchView("compound")');
+    ok('화합물 뷰 활성', d.getElementById('view-compound').classList.contains('is-active'));
+    const cards = [...d.querySelectorAll('#cationCards .ion-card')];
+    const anions = [...d.querySelectorAll('#anionCards .ion-card')];
+    eq('양이온 카드 5종', cards.length, 5);
+    eq('음이온 카드 3종', anions.length, 3);
+
+    const click = (sel) => d.querySelector(sel).click();
+    // Na⁺ + Cl⁻ → NaCl
+    cards.find(c => c.dataset.display === 'Na⁺').click();
+    eq('Na⁺ 1개 → 양전하 과다', d.getElementById('sumStatus').textContent, '양전하 과다');
+    anions.find(c => c.dataset.display === 'Cl⁻').click();
+    ok('NaCl 완성 모달', d.getElementById('modalOverlay').hidden === false);
+    eq('  화학식', d.getElementById('modalFormula').textContent, 'NaCl');
+    ok('  이름 노출', /염화 나트륨/.test(d.getElementById('modalBody').textContent));
+    ok('  체크리스트 반영', ev('state.completed.has("NaCl")'));
+    eq('  체크리스트 카운트', d.getElementById('checklistCount').textContent, '1 / 8');
+    d.getElementById('modalBtn').click();
+    eq('  완성 후 결합 영역 비워짐', ev('state.zoneIons.length'), 0);
+
+    // Na⁺2 + Cl⁻2 → 최소 정수비 위반 (PRD 19)
+    log('\n== K. PRD 19 — Na⁺2 + Cl⁻2는 차단된다 ==');
+    ev('state.zoneIons = []; renderCompoundZone();');
+    ev('addIonToZone(findCard("Na⁺")); addIonToZone(findCard("Na⁺"));');
+    ev('addIonToZone(findCard("Cl⁻")); addIonToZone(findCard("Cl⁻"));');
+    ok('완성 모달이 뜨지 않음', d.getElementById('modalOverlay').hidden === true);
+    eq('총전하 표기', d.getElementById('sumEq').textContent, '(+2) + (-2) = 0');
+    eq('상태', d.getElementById('sumStatus').textContent, '전하는 0 — 개수비 확인 필요');
+    ok('약분 유도 메시지', /가장 간단한 개수비가 아닙니다/.test(d.getElementById('compoundFeedback').textContent),
+        d.getElementById('compoundFeedback').textContent);
+    ok('  2:2 → 1:1 안내', /1:1로 줄여 보세요/.test(d.getElementById('compoundFeedback').textContent));
+
+    // Al³⁺2 + O²⁻3 → Al₂O₃
+    log('\n== L. Al₂O₃ (2:3 정수비) ==');
+    ev('state.zoneIons = []; renderCompoundZone();');
+    ev('addIonToZone(findCard("Al³⁺")); addIonToZone(findCard("Al³⁺"));');
+    ev('addIonToZone(findCard("O²⁻")); addIonToZone(findCard("O²⁻"));');
+    ok('Al³⁺2 + O²⁻2 → 미완성', d.getElementById('modalOverlay').hidden === true);
+    ev('addIonToZone(findCard("O²⁻"));');
+    eq('Al³⁺2 + O²⁻3 → 화학식', d.getElementById('modalFormula').textContent, 'Al₂O₃');
+    ok('  아래첨자 표기', /Al₂O₃/.test(d.getElementById('modalBody').textContent));
+    ok('  계수 1 생략 안내', /아래첨자를 생략/.test(d.getElementById('modalBody').textContent));
+    d.getElementById('modalBtn').click();
+
+    log('\n== M. 자유 탐색 모드 (PRD 12.1) ==');
+    ev('switchView("ion"); applyMode("explore");');
+    eq('보관함 무한', ev('state.well === Infinity'), true);
+    eq('정답확인 숨김', d.getElementById('checkBtn').hidden, true);
+    eq('힌트 숨김', d.getElementById('hintBtn').hidden, true);
+    eq('미션 바 숨김', d.getElementById('missionBar').hidden, true);
+    ev('selectElement(11)');
+    ev('engine.setAnimateOrbit(false)');
+    // 자유 탐색에서는 미션 바와 정답확인 버튼이 사라져 보관함 위치가 달라진다.
+    // 연습 모드에서 잰 좌표를 재사용하면 안 된다.
+    d.getElementById('toast').hidden = true;
+    const wr2 = well.getBoundingClientRect();
+    const wc2 = { x: wr2.left + wr2.width / 2, y: wr2.top + wr2.height / 2 };
+    const m0e = at(2, 0);
+    mouse('mousedown', canvas, m0e.x, m0e.y);
+    mouse('mousemove', w, wc2.x, wc2.y);
+    mouse('mouseup', w, wc2.x, wc2.y);
+    eq('자유 탐색에서도 전자 제거 가능', ev('engine.getElectronCount()'), 10);
+    eq('  보관함은 여전히 무한', ev('state.well === Infinity'), true);
+    ok('  판정 토스트 없음(정답 판정 미적용)', d.getElementById('toast').hidden === true,
+        d.getElementById('toast').textContent);
+
+    log('\n== N. 뷰 컨트롤 ==');
+    const z0 = ev('engine.camera.zoom');
+    d.getElementById('zoomInBtn').click();
+    ok('확대 동작', ev('engine.camera.zoom') > z0);
+    d.getElementById('zoomOutBtn').click();
+    d.getElementById('zoomOutBtn').click();
+    ok('축소 동작', ev('engine.camera.zoom') < z0);
+    d.getElementById('resetViewBtn').click();
+    eq('원래 위치로 → 배율 1', ev('engine.camera.zoom'), 1);
+    d.getElementById('spinBtn').click();
+    eq('공전 On/Off 토글', ev('engine.animateOrbit'), false);
+    d.getElementById('soundBtn').click();
+    eq('소리 On/Off 토글', ev('engine.soundEnabled'), false);
+
+    done();
+}
+// 테스트 도중 예외가 나면 통과 0으로 조용히 끝내지 말고 어디서 터졌는지 남긴다.
+window.addEventListener('error', e => {
+    fail++;
+    fails.push(`테스트 실행 중 예외 — ${e.message} (${e.filename}:${e.lineno})`);
+    done();
+});
+</script>
+</body>
+</html>

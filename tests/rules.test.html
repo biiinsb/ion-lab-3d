@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head><meta charset="UTF-8"><title>verify</title></head>
+<body>
+<pre id="out"></pre>
+<script src="../atoms.js"></script>
+<script src="../rules.js"></script>
+<script>
+const L = [];
+const log = (s) => L.push(s);
+let pass = 0, fail = 0;
+const fails = [];
+
+function ok(name, cond, detail = '') {
+    if (cond) pass++;
+    else { fail++; fails.push(`${name}${detail ? ' — ' + detail : ''}`); }
+}
+function eq(name, actual, expected) {
+    ok(name, JSON.stringify(actual) === JSON.stringify(expected),
+        `기대 ${JSON.stringify(expected)}, 실제 ${JSON.stringify(actual)}`);
+}
+
+const shellsOf = (z) => ELEMENTS[z].neutralShells.slice();
+function remove(shells, n) {
+    const s = shells.slice();
+    for (let k = 0; k < n; k++) s[Rules.getValenceShellIndex(s)]--;
+    return s;
+}
+function add(shells, n) {
+    const s = shells.slice();
+    for (let k = 0; k < n; k++) {
+        const v = Rules.getValenceShellIndex(s);
+        if (v >= 0 && s[v] < Rules.shellCapacity(v)) s[v]++;
+        else if (v + 1 < s.length) s[v + 1]++;
+        else if (v < 0) s[0]++;
+        else s.push(1);
+    }
+    return s;
+}
+
+log('\n== 1. 데이터 정합성 (PRD 20-1) ==');
+for (let z = 1; z <= 20; z++) {
+    const e = ELEMENTS[z];
+    ok(`${z}. 원소 존재`, !!e);
+    eq(`${e.symbol} 양성자=원자번호`, e.protonCount, z);
+    eq(`${e.symbol} 중성 전자=양성자`, e.neutralElectronCount, e.protonCount);
+    eq(`${e.symbol} 껍질 합=전자 수`, e.neutralShells.reduce((a, b) => a + b, 0), e.neutralElectronCount);
+    e.neutralShells.forEach((c, i) => {
+        ok(`${e.symbol} ${SHELL_NAMES[i]}껍질 수용량 이내`, c <= Rules.shellCapacity(i), `${c} > ${Rules.shellCapacity(i)}`);
+    });
+    if (e.isIonActivityEnabled) {
+        const te = e.neutralElectronCount + e.targetElectronChange;
+        eq(`${e.symbol} 전하 항등식`, e.protonCount - te, e.targetCharge);
+        eq(`${e.symbol} 목표 껍질 합=목표 전자 수`, e.targetShells.reduce((a, b) => a + b, 0), te);
+        eq(`${e.symbol} 이온식 표기`, e.ionFormulaDisplay, Rules.ionDisplay(e.symbol, e.targetCharge));
+        eq(`${e.symbol} 이온 종류`, e.ionType, e.targetCharge > 0 ? 'cation' : 'anion');
+    } else {
+        ok(`${e.symbol} 비활성 사유 존재`, !!e.disabledReason);
+    }
+}
+eq('주기율표 20개 배치', PERIODIC_LAYOUT.length, 20);
+
+log('\n== 2. PRD 4.2 대표 이온 13종 ==');
+[['Li',3,[2,1],-1,1,'Li⁺'],['Be',4,[2,2],-2,2,'Be²⁺'],['N',7,[2,5],3,-3,'N³⁻'],
+ ['O',8,[2,6],2,-2,'O²⁻'],['F',9,[2,7],1,-1,'F⁻'],['Na',11,[2,8,1],-1,1,'Na⁺'],
+ ['Mg',12,[2,8,2],-2,2,'Mg²⁺'],['Al',13,[2,8,3],-3,3,'Al³⁺'],['P',15,[2,8,5],3,-3,'P³⁻'],
+ ['S',16,[2,8,6],2,-2,'S²⁻'],['Cl',17,[2,8,7],1,-1,'Cl⁻'],['K',19,[2,8,8,1],-1,1,'K⁺'],
+ ['Ca',20,[2,8,8,2],-2,2,'Ca²⁺']].forEach(([sym, z, sh, ch, q, f]) => {
+    const e = ELEMENTS[z];
+    eq(`${sym} 중성 배치`, e.neutralShells, sh);
+    eq(`${sym} 전자 이동`, e.targetElectronChange, ch);
+    eq(`${sym} 대표 전하`, e.targetCharge, q);
+    eq(`${sym} 이온식`, e.ionFormulaDisplay, f);
+});
+
+log('\n== 3. 회귀: 기존 코드의 N·O·F 판정 버그 ==');
+ok('O 무조작 → 성공 아님', !Rules.evaluate(ELEMENTS[8], shellsOf(8)).isSuccess, '중성 산소가 이온으로 판정됨');
+ok('N 전자 1개 추가 → 성공 아님', !Rules.evaluate(ELEMENTS[7], add(shellsOf(7), 1)).isSuccess);
+ok('F 전자 1개 제거 → 성공 아님', !Rules.evaluate(ELEMENTS[9], remove(shellsOf(9), 1)).isSuccess);
+ok('O 전자 2개 얻음 → 성공', Rules.evaluate(ELEMENTS[8], add(shellsOf(8), 2)).isSuccess);
+eq('O²⁻ 전하', Rules.evaluate(ELEMENTS[8], add(shellsOf(8), 2)).charge, -2);
+ok('N 전자 3개 얻음 → 성공', Rules.evaluate(ELEMENTS[7], add(shellsOf(7), 3)).isSuccess);
+eq('N³⁻ 전하', Rules.evaluate(ELEMENTS[7], add(shellsOf(7), 3)).charge, -3);
+ok('F 전자 1개 얻음 → 성공', Rules.evaluate(ELEMENTS[9], add(shellsOf(9), 1)).isSuccess);
+eq('F⁻ 전하', Rules.evaluate(ELEMENTS[9], add(shellsOf(9), 1)).charge, -1);
+ok('P 전자 3개 얻음 → 성공', Rules.evaluate(ELEMENTS[15], add(shellsOf(15), 3)).isSuccess);
+ok('S 전자 2개 얻음 → 성공', Rules.evaluate(ELEMENTS[16], add(shellsOf(16), 2)).isSuccess);
+
+log('\n== 4. PRD 19 수용 기준 ==');
+eq('Na 초기 배치', shellsOf(11), [2, 8, 1]);
+const naIon = Rules.evaluate(ELEMENTS[11], remove(shellsOf(11), 1));
+ok('Na 전자 1개 제거 → 성공', naIon.isSuccess);
+eq('Na⁺ 전하', naIon.charge, 1);
+eq('Na⁺ 전하 계산식', Rules.chargeEquation(ELEMENTS[11], 10), '11 − 10 = +1');
+eq('Na 전자 주입 → 방향 오류', Rules.evaluate(ELEMENTS[11], add(shellsOf(11), 1)).status, 'direction');
+ok('Na 전자 주입 → 즉시 진단 메시지', !!Rules.diagnoseLive(ELEMENTS[11], add(shellsOf(11), 1)));
+eq('Mg 1개 제거 → 미완성', Rules.evaluate(ELEMENTS[12], remove(shellsOf(12), 1)).status, 'incomplete');
+ok('Mg 2개 제거 → 성공', Rules.evaluate(ELEMENTS[12], remove(shellsOf(12), 2)).isSuccess);
+eq('Mg 3개 제거 → 과다 제거', Rules.evaluate(ELEMENTS[12], remove(shellsOf(12), 3)).status, 'over-remove');
+ok('Cl 1개 주입 → 성공', Rules.evaluate(ELEMENTS[17], add(shellsOf(17), 1)).isSuccess);
+eq('Cl 제거 → 방향 오류', Rules.evaluate(ELEMENTS[17], remove(shellsOf(17), 1)).status, 'direction');
+eq('Cl 2개 주입 → 과다 추가', Rules.evaluate(ELEMENTS[17], add(shellsOf(17), 2)).status, 'over-add');
+[2, 10, 18].forEach(z => {
+    eq(`${ELEMENTS[z].symbol} 비활성화`, Rules.evaluate(ELEMENTS[z], shellsOf(z)).status, 'disabled');
+    eq(`${ELEMENTS[z].symbol} 조작 불가 플래그`, ELEMENTS[z].isIonActivityEnabled, false);
+});
+[5, 6, 14].forEach(z => {
+    eq(`${ELEMENTS[z].symbol} 이온 활동 제외`, Rules.evaluate(ELEMENTS[z], shellsOf(z)).status, 'disabled');
+    ok(`${ELEMENTS[z].symbol} 공유 결합 안내`, /공유/.test(ELEMENTS[z].disabledReason));
+});
+eq('H 규칙 유형', ELEMENTS[1].ruleType, 'duet');
+ok('H 1개 제거 → H⁺ 성공', Rules.evaluate(ELEMENTS[1], remove(shellsOf(1), 1)).isSuccess);
+eq('H⁺ 전하', Rules.evaluate(ELEMENTS[1], remove(shellsOf(1), 1)).charge, 1);
+
+log('\n== 5. PRD 7.1 최외각 전용 조작 ==');
+const na = shellsOf(11);
+ok('Na K껍질(내각) 드래그 불가', !Rules.canDragElectron(na, 0));
+ok('Na L껍질(내각) 드래그 불가', !Rules.canDragElectron(na, 1));
+ok('Na M껍질(최외각) 드래그 가능', Rules.canDragElectron(na, 2));
+eq('Na 최외각 인덱스', Rules.getValenceShellIndex(na), 2);
+eq('Na⁺ 최외각 인덱스', Rules.getValenceShellIndex([2, 8, 0]), 1);
+ok('Na⁺ 상태에서 L껍질이 최외각', Rules.canDragElectron([2, 8, 0], 1));
+ok('가득 찬 껍질에 추가 불가', !Rules.canAcceptElectron([2, 8, 1], 1));
+ok('빈자리 있는 껍질에 추가 가능', Rules.canAcceptElectron([2, 8, 1], 2));
+ok('내각 안내 문구', /최외각 전자만/.test(Rules.innerShellMessage()));
+ok('K껍질 수용량 안내', /2개까지/.test(Rules.shellFullMessage(0)));
+ok('L껍질 수용량 안내', /8개까지/.test(Rules.shellFullMessage(1)));
+
+log('\n== 6. PRD 8.3 3단계 힌트 ==');
+const h1 = Rules.getHint(ELEMENTS[11], shellsOf(11), 1);
+const h2 = Rules.getHint(ELEMENTS[11], shellsOf(11), 2);
+const h3 = Rules.getHint(ELEMENTS[11], shellsOf(11), 3);
+ok('1단계 현상 파악(질문형)', /몇 개인가요/.test(h1), h1);
+ok('2단계 목표 유도(질문형)', /할까요/.test(h2), h2);
+ok('3단계 직접 지시', /전자 1개를 잃어 보세요/.test(h3), h3);
+ok('3단계 원소별 상이 (Cl)', /전자 1개를 얻어 보세요/.test(Rules.getHint(ELEMENTS[17], shellsOf(17), 3)));
+ok('3단계 원소별 상이 (Al)', /전자 3개를 잃어 보세요/.test(Rules.getHint(ELEMENTS[13], shellsOf(13), 3)));
+ok('1·2단계는 정답 미노출', !/1개를 잃어 보세요/.test(h1) && !/1개를 잃어 보세요/.test(h2));
+
+log('\n== 7. PRD 11 화합물 2중 검증 ==');
+const card = (d) => [...ION_CARDS.cations, ...ION_CARDS.anions].find(c => c.display === d);
+const mix = (...p) => {
+    const out = [];
+    for (let i = 0; i < p.length; i += 2) for (let n = 0; n < p[i + 1]; n++) out.push({ ...card(p[i]) });
+    return out;
+};
+let r = Rules.evaluateCompound(mix('Na⁺', 1, 'Cl⁻', 1));
+eq('Na⁺1+Cl⁻1 → 성공', r.status, 'success');
+eq('  화학식', r.formula, 'NaCl');
+eq('  이름', r.koreanName, '염화 나트륨');
+r = Rules.evaluateCompound(mix('Na⁺', 2, 'Cl⁻', 2));
+eq('Na⁺2+Cl⁻2 → 최소 정수비 위반', r.status, 'not-simplest');
+ok('  약분 유도 메시지', /가장 간단한 개수비가 아닙니다/.test(r.message), r.message);
+ok('  총전하 0임을 명시', /전체 전하는 0/.test(r.message));
+r = Rules.evaluateCompound(mix('Ca²⁺', 1, 'Cl⁻', 1));
+eq('Ca²⁺1+Cl⁻1 → 양전하 과다', r.status, 'excess-positive');
+ok('  음이온 추가 유도', /음이온을 추가/.test(r.message));
+eq('Na⁺1+O²⁻1 → 음전하 과다', Rules.evaluateCompound(mix('Na⁺', 1, 'O²⁻', 1)).status, 'excess-negative');
+eq('Ca²⁺1+Cl⁻2 → CaCl₂', Rules.evaluateCompound(mix('Ca²⁺', 1, 'Cl⁻', 2)).formula, 'CaCl₂');
+eq('Al³⁺2+O²⁻3 → Al₂O₃', Rules.evaluateCompound(mix('Al³⁺', 2, 'O²⁻', 3)).formula, 'Al₂O₃');
+eq('K⁺2+O²⁻1 → K₂O', Rules.evaluateCompound(mix('K⁺', 2, 'O²⁻', 1)).formula, 'K₂O');
+eq('Na⁺2+O²⁻1 → Na₂O', Rules.evaluateCompound(mix('Na⁺', 2, 'O²⁻', 1)).formula, 'Na₂O');
+eq('Mg²⁺1+O²⁻1 → MgO', Rules.evaluateCompound(mix('Mg²⁺', 1, 'O²⁻', 1)).formula, 'MgO');
+eq('Mg²⁺1+Cl⁻2 → MgCl₂', Rules.evaluateCompound(mix('Mg²⁺', 1, 'Cl⁻', 2)).formula, 'MgCl₂');
+eq('Ca²⁺1+F⁻2 → CaF₂', Rules.evaluateCompound(mix('Ca²⁺', 1, 'F⁻', 2)).formula, 'CaF₂');
+eq('Al³⁺4+O²⁻6 → 약분 미필', Rules.evaluateCompound(mix('Al³⁺', 4, 'O²⁻', 6)).status, 'not-simplest');
+eq('양이온만 → 결합 불가', Rules.evaluateCompound(mix('Na⁺', 1)).status, 'need-both');
+eq('양이온 2종 혼합 → 차단', Rules.evaluateCompound(mix('Na⁺', 1, 'K⁺', 1, 'O²⁻', 1)).status, 'too-many-species');
+eq('빈 결합 영역', Rules.evaluateCompound([]).status, 'idle');
+
+const targets = COMPOUNDS.filter(c => c.isMvpTarget);
+eq('MVP 목표 화합물 8종', targets.length, 8);
+[['NaCl','염화 나트륨'],['MgO','산화 마그네슘'],['CaCl₂','염화 칼슘'],['K₂O','산화 칼륨'],
+ ['MgCl₂','염화 마그네슘'],['Na₂O','산화 나트륨'],['Al₂O₃','산화 알루미늄'],['CaF₂','플루오린화 칼슘']]
+.forEach(([f, kr]) => {
+    const c = targets.find(x => x.formula === f);
+    ok(`MVP 목록에 ${f}`, !!c);
+    if (c) eq(`  ${f} 이름`, c.koreanName, kr);
+});
+ok('물(H₂O)은 이온 화합물 목록에 없음', !COMPOUNDS.some(c => c.formula === 'H₂O'));
+
+const unnamed = [];
+ION_CARDS.cations.forEach(c => ION_CARDS.anions.forEach(a => {
+    const g = Rules.gcd(Math.abs(a.charge), c.charge);
+    const res = Rules.evaluateCompound(mix(c.display, Math.abs(a.charge) / g, a.display, c.charge / g));
+    if (res.status !== 'success') unnamed.push(`${c.display}+${a.display}→${res.status}`);
+}));
+ok('카드로 만들 수 있는 모든 중성 조합이 명명됨', unnamed.length === 0, unnamed.join(', '));
+
+log('\n== 8. PRD 19 표기 규칙 ==');
+eq('계수 1 아래첨자 생략', Rules.formulaUnit('Na', 1), 'Na');
+eq('계수 2 아래첨자 표기', Rules.formulaUnit('Al', 2), 'Al₂');
+eq('전하 1 숫자 생략', Rules.chargeToSuperscript(1), '⁺');
+eq('전하 −1 숫자 생략', Rules.chargeToSuperscript(-1), '⁻');
+eq('전하 2 숫자 표기', Rules.chargeToSuperscript(2), '²⁺');
+eq('전하 −3 숫자 표기', Rules.chargeToSuperscript(-3), '³⁻');
+eq('전하 0 표기 없음', Rules.chargeToSuperscript(0), '');
+eq('전자 배치 표기', Rules.shellsText([2, 8, 0]), '2, 8');
+eq('전하 0 → 중성 원자', Rules.chargeLabel(0), '중성 원자');
+
+log('\n' + '='.repeat(50));
+log(`RESULT 통과 ${pass} · 실패 ${fail}`);
+log('='.repeat(50));
+if (fail) { log('실패 항목:'); fails.forEach(f => log('  X ' + f)); }
+document.getElementById('out').textContent = L.join('\n');
+</script>
+</body>
+</html>
