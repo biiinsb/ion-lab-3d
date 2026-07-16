@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>og-image 생성기</title>
+<!--
+  오픈그래프 이미지(1200×630) 생성기.
+
+  일러스트를 따로 그리지 않고 앱의 실제 렌더링 엔진(canvas-engine.js)을 그대로 불러
+  쓴다. 그래야 공유 미리보기와 실제 화면이 어긋나지 않는다. 모형이 바뀌면 이 페이지를
+  다시 찍기만 하면 된다.
+
+  생성:
+    py -m http.server 8000
+    chrome --headless=new --window-size=1200,630 --hide-scrollbars \
+           --screenshot=og-image.png http://localhost:8000/tools/og-image.html
+-->
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1200px; height: 630px; overflow: hidden; }
+
+  body {
+    font-family: "Pretendard", "Malgun Gothic", "맑은 고딕", system-ui, sans-serif;
+    color: #16202c;
+    background-color: #eef1f6;
+    background-image:
+      linear-gradient(rgba(120,140,165,.16) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(120,140,165,.16) 1px, transparent 1px);
+    background-size: 30px 30px;
+    display: grid;
+    grid-template-columns: 1fr 520px;
+    align-items: center;
+  }
+
+  .left { padding: 0 0 0 68px; }
+
+  .brand { display: flex; align-items: center; gap: 13px; margin-bottom: 26px; }
+  .mark {
+    width: 52px; height: 52px; border-radius: 14px;
+    display: grid; place-items: center;
+    background: linear-gradient(135deg, #2f6fd0, #1b4b95);
+    color: #fff; font-size: 27px;
+  }
+  .brand-name { font-size: 27px; font-weight: 800; letter-spacing: -.5px; }
+
+  h1 {
+    font-size: 52px; font-weight: 800; line-height: 1.25;
+    letter-spacing: -1.5px; margin-bottom: 20px;
+  }
+  h1 em { font-style: normal; color: #2f6fd0; }
+
+  .desc { font-size: 19px; line-height: 1.65; color: #46586c; margin-bottom: 30px; }
+
+  .chips { display: flex; gap: 9px; flex-wrap: wrap; }
+  .chip {
+    font-size: 15px; font-weight: 600; color: #46586c;
+    background: #fff; border: 1px solid #c8d3e0;
+    padding: 9px 16px; border-radius: 24px;
+  }
+
+  .right { position: relative; width: 520px; height: 630px; }
+  #atomCanvas { display: block; width: 100%; height: 100%; }
+
+  /* 입자 범례 — 색상만으로 구분하지 않는다 */
+  .legend {
+    position: absolute; left: 0; right: 0; bottom: 40px;
+    display: flex; gap: 16px; justify-content: center;
+    font-size: 13.5px; color: #46586c;
+  }
+  .legend span { display: flex; align-items: center; gap: 6px; }
+  .dot {
+    width: 17px; height: 17px; border-radius: 50%;
+    display: grid; place-items: center;
+    color: #fff; font-size: 10px; font-weight: 700; line-height: 1;
+    border: 1px solid rgba(255,255,255,.75);
+  }
+  .p { background: radial-gradient(circle at 32% 30%, #f9b1b1, #d64545 60%, #8e2020); }
+  .n { background: radial-gradient(circle at 32% 30%, #dfe6ee, #9aa8b8 60%, #5d6b7c); }
+  .e { background: radial-gradient(circle at 32% 30%, #8fc0ff, #2f6fd0 60%, #123c78); }
+</style>
+</head>
+<body>
+
+<div class="left">
+  <div class="brand">
+    <span class="mark">⚛</span>
+    <span class="brand-name">Ion Lab 3D</span>
+  </div>
+
+  <h1>전자를 직접 움직이며<br><em>깨닫는 이온의 원리</em></h1>
+
+  <p class="desc">
+    최외각 전자를 끌어 빼고 넣으며 이온이 만들어지는 과정을 배우고,<br>
+    양이온과 음이온을 결합해 이온 화합물을 만듭니다.
+  </p>
+
+  <div class="chips">
+    <span class="chip">중학교 과학 교과 연계</span>
+    <span class="chip">1~20번 원소</span>
+    <span class="chip">3D 인터랙티브</span>
+  </div>
+</div>
+
+<div class="right">
+  <canvas id="atomCanvas"></canvas>
+  <div class="legend">
+    <span><i class="dot p">+</i>양성자</span>
+    <span><i class="dot n"></i>중성자</span>
+    <span><i class="dot e">−</i>전자</span>
+  </div>
+</div>
+
+<script src="../atoms.js"></script>
+<script src="../rules.js"></script>
+<script src="../canvas-engine.js"></script>
+<script>
+  const engine = new AtomCanvasEngine('atomCanvas', {});
+
+  // 정지 화면이므로 공전을 멈춘다. 좌상단 원자핵 안내는 이미지에선 군더더기라 끈다.
+  engine.setAnimateOrbit(false);
+  engine.drawNucleusLabel = () => {};
+
+  engine.loadAtom(ELEMENTS[11]); // 나트륨 — 최외각 전자 1개가 눈에 띈다
+  engine.camera.rx = -0.62;
+  engine.camera.ry = 0.62;
+  engine.camera.zoom = 0.82; // 최외각 껍질 라벨까지 캔버스 안에 들어오도록
+
+  // 최외각 전자를 앞쪽 잘 보이는 위치로 돌려 놓는다
+  engine.globalAngle = 0.55;
+</script>
+</body>
+</html>
