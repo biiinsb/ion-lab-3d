@@ -23,6 +23,7 @@ const state = {
 };
 
 let engine = null;
+let lattice = null;
 let toastTimer = null;
 const $ = (id) => document.getElementById(id);
 
@@ -44,6 +45,8 @@ function init() {
     });
     engine.setSoundEnabled(state.soundEnabled);
     engine.setAnimateOrbit(state.spin && !prefersReducedMotion);
+
+    lattice = new LatticeEngine('latticeCanvas');
 
     buildPeriodicTable();
     buildIonCards();
@@ -200,7 +203,10 @@ function updateInfoPanel() {
     $('statProtons').textContent = el.protonCount;
     $('statNeutrons').textContent = el.neutronCount;
     $('statElectrons').textContent = electrons;
-    $('statIonFormula').textContent = charge === 0 ? `${el.symbol} (원자)` : Rules.ionDisplay(el.symbol, charge);
+
+    // 중성 원자는 이온이 아니므로 '이온식'이라 부르지 않는다. 원소 기호일 뿐이다.
+    $('statFormulaLabel').textContent = charge === 0 ? '원소 기호' : '이온식';
+    $('statIonFormula').textContent = charge === 0 ? el.symbol : Rules.ionDisplay(el.symbol, charge);
 
     renderShellList();
     updateGoalBox();
@@ -236,8 +242,8 @@ function updateGoalBox() {
     if (state.mode === 'explore') { box.textContent = el.description; return; }
 
     box.textContent = el.ruleType === 'duet'
-        ? '첫 번째 전자 껍질을 기준으로 안정한 상태가 되도록 전자를 이동시켜 보세요. (듀엣 규칙)'
-        : '최외각 전자 껍질이 안정한 상태가 되도록 전자를 이동시켜 보세요.';
+        ? '이 원소는 전자 껍질이 하나뿐입니다. 안정한 상태가 되도록 전자를 이동시켜 보세요.'
+        : '비활성 기체처럼 안정한 전자 배치가 되도록 최외각 전자를 이동시켜 보세요.';
 }
 
 // ── 전자 보관함 ─────────────────────────────────────────────
@@ -417,6 +423,77 @@ function showIonSuccessModal(result) {
 
 // ── 화합물 만들기 (PRD 11장 / Blueprint p.9-10) ─────────────
 
+// 양이온은 전자를 잃어 자리가 비었으므로 홈(오목), 음이온은 전자가 더 붙었으므로
+// 돌기(볼록)로 그린다. 홈·돌기의 개수가 곧 전하의 크기다. 따라서 서로 빈틈없이
+// 맞물리는 개수를 세면 그것이 그대로 최소 정수비가 된다.
+// (Ca²⁺의 홈 2개 ← Cl⁻의 돌기 1개 × 2 = CaCl₂)
+
+const PUZZLE = { bodyW: 126, h: 52, margin: 11, knob: 8.5, corner: 8 };
+
+/**
+ * 한쪽 변에 홈 또는 돌기가 달린 카드 외곽선을 SVG path로 만든다.
+ * @param {number} count 홈·돌기 개수 (= 전하의 크기)
+ * @param {'left'|'right'} side 특징이 붙는 변
+ * @param {'notch'|'knob'} type notch=안쪽으로 파임, knob=바깥으로 튀어나옴
+ */
+function puzzlePath(count, side, type) {
+    const { bodyW: w, h, knob: k, corner: r } = PUZZLE;
+    const ys = [];
+    for (let i = 0; i < count; i++) ys.push((h * (i + 1)) / (count + 1));
+
+    // 원호의 sweep 방향이 볼록/오목을 가른다. 오른쪽 변은 위에서 아래로 훑으므로
+    // sweep=1이면 바깥으로 부풀고, 왼쪽 변은 아래에서 위로 훑어 진행 방향이 반대다.
+    const sweep = type === 'knob' ? 1 : 0;
+    const d = [`M ${r} 0`, `L ${w - r} 0`, `Q ${w} 0 ${w} ${r}`];
+
+    if (side === 'right') {
+        ys.forEach(cy => {
+            d.push(`L ${w} ${cy - k}`);
+            d.push(`A ${k} ${k} 0 0 ${sweep} ${w} ${cy + k}`);
+        });
+    }
+
+    d.push(`L ${w} ${h - r}`, `Q ${w} ${h} ${w - r} ${h}`, `L ${r} ${h}`, `Q 0 ${h} 0 ${h - r}`);
+
+    if (side === 'left') {
+        ys.slice().reverse().forEach(cy => {
+            d.push(`L 0 ${cy + k}`);
+            d.push(`A ${k} ${k} 0 0 ${sweep} 0 ${cy - k}`);
+        });
+    }
+
+    d.push(`L 0 ${r}`, `Q 0 0 ${r} 0`, 'Z');
+    return d.join(' ');
+}
+
+/** 이온 카드 한 장의 마크업 (퍼즐 외곽선 + 그 위에 얹은 글자) */
+function ionCardMarkup(card, type) {
+    const { bodyW, h, margin } = PUZZLE;
+    const count = Math.abs(card.charge);
+    const isCation = type === 'cation';
+    const path = puzzlePath(count, isCation ? 'right' : 'left', isCation ? 'notch' : 'knob');
+    const totalW = bodyW + margin * 2;
+
+    return `
+        <svg class="puzzle" viewBox="0 0 ${totalW} ${h}" width="${totalW}" height="${h}" aria-hidden="true">
+            <g transform="translate(${margin} 0)"><path d="${path}" /></g>
+        </svg>
+        <span class="ion-body">
+            <span class="ion-sym">${card.display}</span>
+            <span class="ion-meta">
+                <span class="ion-kr">${card.koreanName}</span>
+                <span class="ion-charge">${card.charge > 0 ? '+' : ''}${card.charge}</span>
+            </span>
+        </span>`;
+}
+
+function cardHint(card, type) {
+    const n = Math.abs(card.charge);
+    return type === 'cation'
+        ? `${card.koreanName} — 전자 ${n}개를 잃어 홈이 ${n}개입니다.`
+        : `${card.koreanName} — 전자 ${n}개를 더 얻어 돌기가 ${n}개입니다.`;
+}
+
 function buildIonCards() {
     renderCardList($('cationCards'), ION_CARDS.cations, 'cation');
     renderCardList($('anionCards'), ION_CARDS.anions, 'anion');
@@ -430,12 +507,9 @@ function renderCardList(container, cards, type) {
         btn.className = `ion-card ${type}`;
         btn.draggable = true;
         btn.dataset.display = card.display;
-        btn.innerHTML = `
-            <span class="ion-sym">${card.display}</span>
-            <span class="ion-meta">
-                <span class="ion-kr">${card.koreanName}</span>
-                <span class="ion-charge">${card.charge > 0 ? '+' : ''}${card.charge}</span>
-            </span>`;
+        btn.title = cardHint(card, type);
+        btn.setAttribute('aria-label', cardHint(card, type));
+        btn.innerHTML = ionCardMarkup(card, type);
         btn.addEventListener('click', () => addIonToZone(card));
         btn.addEventListener('dragstart', (e) => e.dataTransfer.setData('text/plain', card.display));
         container.appendChild(btn);
@@ -464,11 +538,15 @@ function renderCompoundZone() {
     $('dropzoneEmpty').hidden = state.zoneIons.length > 0;
 
     // 화학식과 같은 순서로 — 양이온을 먼저, 음이온을 나중에 (PRD 11.5)
+    // 그래야 양이온의 홈과 음이온의 돌기가 마주 보며 맞물린다.
     const ordered = [...state.zoneIons].sort((a, b) => b.charge - a.charge);
     ordered.forEach(ion => {
+        const type = ion.charge > 0 ? 'cation' : 'anion';
         const el = document.createElement('div');
-        el.className = `zone-ion ${ion.charge > 0 ? 'cation' : 'anion'}`;
-        el.innerHTML = `${ion.display}<button class="zone-remove" aria-label="${ion.display} 제거">×</button>`;
+        el.className = `zone-ion ${type}`;
+        el.title = cardHint(ion, type);
+        el.innerHTML = ionCardMarkup(ion, type) +
+            `<button class="zone-remove" aria-label="${ion.display} 제거">×</button>`;
         el.querySelector('.zone-remove').addEventListener('click', () => removeIonFromZone(ion.id));
         holder.appendChild(el);
     });
@@ -506,9 +584,52 @@ function updateCompoundStatus() {
     showFeedback(result.message, total === 0 ? 'is-warn' : 'is-err', '아직 완성되지 않았습니다', 'compoundFeedback');
 }
 
+/**
+ * 완성한 화합물의 이온 결정을 3D로 보여준다.
+ * '분자 모형'이 아니라 '결정 격자'다 — 이온 화합물은 분자로 존재하지 않는다.
+ */
+function showLattice(recipe) {
+    const cation = findCard(recipe.cation);
+    const anion = findCard(recipe.anion);
+    if (!cation || !anion) return;
+
+    $('latticePanel').hidden = false;
+    $('latticeFormula').textContent = recipe.formula;
+    $('latticeName').textContent = recipe.koreanName;
+    $('latticeRatio').textContent =
+        `${cation.display} : ${anion.display} = ${recipe.cationRatio} : ${recipe.anionRatio}`;
+    $('latticeCationName').textContent = `${cation.display} ${cation.koreanName} (반지름 ${cation.ionicRadius}pm)`;
+    $('latticeAnionName').textContent = `${anion.display} ${anion.koreanName} (반지름 ${anion.ionicRadius}pm)`;
+
+    const isRockSalt = recipe.cationRatio === 1 && recipe.anionRatio === 1;
+    $('latticeNote').innerHTML = isRockSalt
+        ? `<strong>이것은 분자가 아니라 결정입니다</strong> — ${recipe.formula} 분자라는 것은 없습니다.
+           수많은 ${cation.display}과 ${anion.display}이 정전기적 인력으로 규칙적으로 배열된 덩어리이고,
+           화학식 ${recipe.formula}은 그 안의 개수비를 나타냅니다. 이온을 막대로 잇지 않은 이유도
+           같습니다 — 정전기적 인력은 특정 방향이 아니라 주위의 모든 반대 전하를 향하니까요.
+           1:1로 번갈아 놓인 이 배열은 실제 ${recipe.formula} 결정 구조와 같습니다.`
+        : `<strong>이것은 분자가 아니라 결정입니다</strong> — ${recipe.formula} 분자라는 것은 없습니다.
+           수많은 ${cation.display}과 ${anion.display}이 정전기적 인력으로 규칙적으로 배열된 덩어리이고,
+           화학식 ${recipe.formula}은 그 안의 개수비를 나타냅니다.
+           다만 이 그림은 <strong>개수비 ${recipe.cationRatio}:${recipe.anionRatio}로 규칙적으로 배열된다는
+           것만 보여주는 학습용 모식도</strong>이며, 실제 ${recipe.formula}의 결정 구조와는 다릅니다.`;
+
+    lattice.setCompound({
+        formula: recipe.formula,
+        cationRatio: recipe.cationRatio,
+        anionRatio: recipe.anionRatio,
+        cationRadius: cation.ionicRadius,
+        anionRadius: anion.ionicRadius
+    });
+    requestAnimationFrame(() => lattice.resize());
+}
+
 function onCompoundComplete(result) {
     showFeedback(result.message, 'is-ok', `${result.formula} 완성!`, 'compoundFeedback');
     celebrate(['#2f6fd0', '#d64545', '#2e7d5b', '#7a4d10']);
+
+    const recipe = COMPOUNDS.find(c => c.formula === result.formula);
+    if (recipe) showLattice(recipe);
 
     if (result.isMvpTarget && !state.completed.has(result.formula)) {
         state.completed.add(result.formula);
@@ -558,7 +679,9 @@ function renderChecklist() {
         const li = document.createElement('li');
         li.className = 'check-item' + (done ? ' is-done' : '');
         li.innerHTML = `<span class="mark">${done ? '✓' : '○'}</span>${c.formula}`;
-        li.title = c.koreanName;
+        li.title = done ? `${c.koreanName} — 클릭하면 결정 구조를 다시 봅니다` : c.koreanName;
+        // 한 번 완성한 화합물은 다시 만들지 않아도 결정 구조를 다시 볼 수 있다
+        if (done) li.addEventListener('click', () => showLattice(c));
         list.appendChild(li);
     });
 
@@ -740,6 +863,19 @@ function bindEvents() {
     $('clearZoneBtn').addEventListener('click', () => {
         state.zoneIons = [];
         renderCompoundZone();
+    });
+
+    // 결정 격자 뷰어 조작
+    $('latticeSpinBtn').addEventListener('click', () => {
+        const on = !lattice.autoSpin;
+        lattice.setAutoSpin(on);
+        $('latticeSpinBtn').classList.toggle('is-active', on);
+        $('latticeSpinBtn').setAttribute('aria-pressed', String(on));
+    });
+    $('latticeResetBtn').addEventListener('click', () => lattice.resetView());
+    $('latticeCloseBtn').addEventListener('click', () => {
+        $('latticePanel').hidden = true;
+        lattice.stop();
     });
 
     // 모달 바깥 클릭 / ESC

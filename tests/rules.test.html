@@ -198,6 +198,43 @@ eq('전하 0 표기 없음', Rules.chargeToSuperscript(0), '');
 eq('전자 배치 표기', Rules.shellsText([2, 8, 0]), '2, 8');
 eq('전하 0 → 중성 원자', Rules.chargeLabel(0), '중성 원자');
 
+log('\n== 9. 용어 — 2022 개정 중학교 과학 수준 ==');
+// 중학교 교육과정에는 '옥텟 규칙'·'듀엣 규칙'이라는 용어가 나오지 않는다.
+// 학생에게 보이는 문구에 이 용어가 새어 나오면 안 된다.
+const userText = [];
+for (let z = 1; z <= 20; z++) {
+    const e = ELEMENTS[z];
+    ['description', 'explanation', 'disabledReason', 'ionName', 'koreanName'].forEach(k => {
+        if (e[k]) userText.push(`${e.symbol}.${k}: ${e[k]}`);
+    });
+    if (e.isIonActivityEnabled) {
+        for (let s = 1; s <= 3; s++) userText.push(`${e.symbol}.hint${s}: ${Rules.getHint(e, e.neutralShells, s)}`);
+    } else {
+        userText.push(`${e.symbol}.hint: ${Rules.getHint(e, e.neutralShells, 1)}`);
+    }
+}
+COMPOUNDS.forEach(c => userText.push(`${c.formula}: ${c.koreanName} ${c.uses}`));
+
+const banned = userText.filter(t => /옥텟|듀엣|octet|duet/i.test(t));
+ok('학생에게 보이는 문구에 옥텟·듀엣 용어 없음', banned.length === 0, banned.join(' | '));
+ok('내부 분기 키 ruleType은 유지 (화면 비노출)', ELEMENTS[1].ruleType === 'duet');
+ok('H 설명이 8개 기준이 아님을 풀어서 안내', /2개|하나뿐/.test(ELEMENTS[1].description), ELEMENTS[1].description);
+ok('비활성 기체 안내에 규칙 용어 대신 상태 설명', /이미 채워져/.test(ELEMENTS[10].disabledReason));
+
+log('\n== 10. 이온 반지름 (3D 결정 모형 상대 크기) ==');
+const allCards = [...ION_CARDS.cations, ...ION_CARDS.anions];
+allCards.forEach(c => ok(`${c.display} 이온 반지름 존재`, typeof c.ionicRadius === 'number' && c.ionicRadius > 0));
+// 전자를 잃은 양이온은 원자보다 작고, 전자를 얻은 음이온은 원자보다 크다.
+ok('Na⁺ < Cl⁻ (양이온이 음이온보다 작다)',
+    ION_CARDS.cations.find(c => c.symbol === 'Na').ionicRadius <
+    ION_CARDS.anions.find(c => c.symbol === 'Cl').ionicRadius);
+ok('Al³⁺가 가장 작다 (전자 3개를 잃음)',
+    Math.min(...ION_CARDS.cations.map(c => c.ionicRadius)) ===
+    ION_CARDS.cations.find(c => c.symbol === 'Al').ionicRadius);
+ok('K⁺ > Na⁺ (주기가 아래일수록 크다)',
+    ION_CARDS.cations.find(c => c.symbol === 'K').ionicRadius >
+    ION_CARDS.cations.find(c => c.symbol === 'Na').ionicRadius);
+
 log('\n' + '='.repeat(50));
 log(`RESULT 통과 ${pass} · 실패 ${fail}`);
 log('='.repeat(50));

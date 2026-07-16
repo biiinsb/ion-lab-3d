@@ -126,7 +126,9 @@
             <div><dt><span class="dot proton"></span>양성자 수</dt><dd id="statProtons">11</dd></div>
             <div><dt><span class="dot neutron"></span>중성자 수</dt><dd id="statNeutrons">12</dd></div>
             <div><dt><span class="dot electron"></span>전자 수</dt><dd id="statElectrons">11</dd></div>
-            <div><dt>이온식</dt><dd id="statIonFormula">—</dd></div>
+            <!-- 라벨은 전하에 따라 '원소 기호' ↔ '이온식'으로 바뀐다.
+                 중성 원자를 '이온식'이라 부르면 오개념이 된다. -->
+            <div><dt id="statFormulaLabel">원소 기호</dt><dd id="statIonFormula">—</dd></div>
         </dl>
 
         <h3 class="sub-title">전자 배치</h3>
@@ -144,6 +146,10 @@
     <aside class="panel panel-cards">
         <h2 class="panel-title cation">양이온</h2>
         <div class="card-list" id="cationCards"></div>
+        <p class="puzzle-legend">
+            전자를 <strong>잃어</strong> 자리가 비었으므로 <strong>홈(오목)</strong>이 파여 있습니다.
+            홈의 개수 = 잃은 전자 수 = 전하의 크기.
+        </p>
     </aside>
 
     <section class="stage stage-compound">
@@ -171,6 +177,33 @@
 
         <div class="feedback" id="compoundFeedback" role="status" aria-live="polite" hidden></div>
 
+        <!-- 완성한 화합물의 3D 이온 결정 -->
+        <section class="lattice-panel" id="latticePanel" hidden>
+            <div class="lattice-head">
+                <div>
+                    <h3 class="lattice-title"><span id="latticeFormula">NaCl</span> <small id="latticeName">염화 나트륨</small></h3>
+                    <p class="lattice-sub" id="latticeRatio">—</p>
+                </div>
+                <div class="lattice-tools">
+                    <button class="tool is-active" id="latticeSpinBtn" aria-pressed="true" title="회전 켜기·끄기">↻</button>
+                    <button class="tool" id="latticeResetBtn" title="원래 위치로">⌂</button>
+                    <button class="tool" id="latticeCloseBtn" title="닫기">×</button>
+                </div>
+            </div>
+
+            <div class="lattice-canvas-shell">
+                <canvas id="latticeCanvas" aria-label="이온 결정 격자 3D 모형. 끌어서 돌려 볼 수 있습니다."></canvas>
+                <div class="lattice-hint">끌어서 돌리기 · 휠로 확대</div>
+            </div>
+
+            <ul class="lattice-legend">
+                <li><span class="ion-dot cation">+</span><span id="latticeCationName">양이온</span></li>
+                <li><span class="ion-dot anion">−</span><span id="latticeAnionName">음이온</span></li>
+            </ul>
+
+            <p class="model-note" id="latticeNote"></p>
+        </section>
+
         <div class="checklist">
             <h3 class="sub-title">완성한 화합물 <span id="checklistCount">0 / 8</span></h3>
             <ul class="checklist-items" id="checklistItems"></ul>
@@ -180,6 +213,10 @@
     <aside class="panel panel-cards">
         <h2 class="panel-title anion">음이온</h2>
         <div class="card-list" id="anionCards"></div>
+        <p class="puzzle-legend">
+            전자를 <strong>더 얻어</strong> 붙어 있으므로 <strong>돌기(볼록)</strong>가 튀어나와 있습니다.
+            돌기의 개수 = 얻은 전자 수 = 전하의 크기.
+        </p>
     </aside>
 </main>
 
@@ -228,6 +265,7 @@
 <script src="atoms.js"></script>
 <script src="rules.js"></script>
 <script src="canvas-engine.js"></script>
+<script src="lattice-engine.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

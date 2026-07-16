@@ -453,28 +453,48 @@ body {
 
 /* ── 화합물 만들기 ─────────────────────────────────────── */
 
-.card-list { display: flex; flex-direction: column; gap: 7px; }
+.card-list { display: flex; flex-direction: column; gap: 8px; align-items: center; }
 
+/* 퍼즐 조각 이온 카드 — 외곽선은 SVG, 글자는 그 위에 HTML로 얹는다 */
 .ion-card {
-    display: flex; align-items: center; justify-content: space-between;
-    gap: 8px; padding: 10px 12px; cursor: grab;
-    border: 1px solid var(--line-2); border-left-width: 4px;
-    border-radius: var(--radius-sm); background: var(--panel-2);
+    position: relative; flex: none;
+    width: 148px; height: 52px;
+    padding: 0; border: 0; background: none;
     font: inherit; text-align: left; color: var(--ink);
-    transition: transform .12s, box-shadow .12s;
-    user-select: none;
+    cursor: grab; user-select: none;
+    transition: transform .12s, filter .12s;
 }
-.ion-card:hover { transform: translateY(-1px); box-shadow: var(--shadow); }
+.ion-card:hover { transform: translateY(-2px); filter: drop-shadow(0 4px 8px rgba(22,32,44,.18)); }
 .ion-card:active { cursor: grabbing; }
-.ion-card.cation { border-left-color: var(--proton); }
-.ion-card.anion { border-left-color: var(--electron); }
+.ion-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 8px; }
 
-.ion-card .ion-sym { font-size: 17px; font-weight: 700; }
-.ion-card.cation .ion-sym { color: var(--proton); }
-.ion-card.anion .ion-sym { color: var(--electron); }
-.ion-card .ion-meta { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.3; }
-.ion-card .ion-kr { font-size: 10.5px; color: var(--muted); }
-.ion-card .ion-charge { font-size: 11px; font-weight: 700; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.puzzle { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.puzzle path { stroke-width: 1.5; }
+
+.cation .puzzle path { fill: #fbe9e9; stroke: #d98d8d; }
+.anion .puzzle path { fill: #e7effb; stroke: #90b3e4; }
+
+/* 글자는 퍼즐 몸통 안쪽에만 놓는다. 홈·돌기가 있는 변은 여백을 더 준다. */
+.ion-body {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 6px; pointer-events: none;
+}
+.cation .ion-body { padding: 0 28px 0 16px; }
+.anion .ion-body { padding: 0 14px 0 26px; }
+
+/* 선택자를 .ion-card로 한정하지 않는다 — 같은 마크업을 결합 영역(.zone-ion)에서도 쓴다. */
+.ion-sym { font-size: 17px; font-weight: 700; white-space: nowrap; }
+.cation .ion-sym { color: var(--proton); }
+.anion .ion-sym { color: var(--electron); }
+.ion-meta { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.25; }
+.ion-kr { font-size: 10px; color: var(--muted); white-space: nowrap; }
+.ion-charge { font-size: 11px; font-weight: 700; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+
+.puzzle-legend {
+    margin-top: 10px; font-size: 10.5px; color: var(--muted); line-height: 1.5;
+    border-top: 1px dashed var(--line); padding-top: 8px;
+}
 
 .stage-compound { gap: 12px; }
 .combine-head { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; box-shadow: var(--shadow); }
@@ -491,28 +511,30 @@ body {
 .dropzone.is-hover { border-color: var(--accent); background: #f2f7fe; }
 .dropzone-empty { font-size: 12.5px; color: var(--muted); text-align: center; max-width: 340px; }
 .dropzone-empty[hidden] { display: none; }
-.dropzone-ions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; align-items: center; }
+/* 결합 영역 — 양이온을 먼저, 음이온을 나중에 놓아 홈과 돌기가 마주 보게 한다.
+   음수 마진으로 조각이 실제로 맞물려 보이게 만든다. */
+.dropzone-ions {
+    display: flex; flex-wrap: wrap; gap: 10px 0;
+    justify-content: center; align-items: center;
+}
 
 .zone-ion {
-    position: relative; display: flex; align-items: center; gap: 6px;
-    padding: 9px 30px 9px 13px; border-radius: 9px;
-    border: 1px solid var(--line-2); border-top-width: 3px;
-    background: var(--panel-2); font-size: 16px; font-weight: 700;
+    position: relative; flex: none;
+    width: 148px; height: 52px;
     animation: pop .18s ease-out;
 }
-.zone-ion.cation { border-top-color: var(--proton); color: var(--proton); }
-.zone-ion.anion { border-top-color: var(--electron); color: var(--electron); }
+.zone-ion + .zone-ion { margin-left: -9px; }
 
 @keyframes pop { from { transform: scale(.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
 .zone-ion .zone-remove {
-    position: absolute; top: 50%; right: 6px; transform: translateY(-50%);
+    position: absolute; top: -4px; right: 4px; z-index: 2;
     width: 18px; height: 18px; display: grid; place-items: center;
-    border: 0; border-radius: 50%; cursor: pointer;
-    background: rgba(90, 105, 125, .14); color: var(--ink-2);
-    font: inherit; font-size: 12px; line-height: 1;
+    border: 1px solid var(--line-2); border-radius: 50%; cursor: pointer;
+    background: #fff; color: var(--ink-2);
+    font: inherit; font-size: 11px; line-height: 1;
 }
-.zone-ion .zone-remove:hover { background: var(--err); color: #fff; }
+.zone-ion .zone-remove:hover { background: var(--err); color: #fff; border-color: var(--err); }
 
 .charge-sum {
     display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
@@ -526,7 +548,57 @@ body {
 .charge-sum-status.is-ok { color: var(--ok); }
 .charge-sum-status.is-err { color: var(--err); }
 
+/* ── 3D 이온 결정 격자 ─────────────────────────────────── */
+
+.lattice-panel {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 12px 14px 14px;
+    box-shadow: var(--shadow);
+    display: flex; flex-direction: column; gap: 10px;
+    animation: rise .22s ease-out;
+}
+.lattice-panel[hidden] { display: none; }
+
+.lattice-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.lattice-title { font-size: 19px; font-weight: 700; display: flex; align-items: baseline; gap: 8px; }
+.lattice-title small { font-size: 13px; font-weight: 500; color: var(--muted); }
+.lattice-sub { font-size: 12px; color: var(--ink-2); margin-top: 2px; }
+.lattice-tools { display: flex; gap: 5px; flex: none; }
+
+.lattice-canvas-shell {
+    position: relative;
+    height: clamp(260px, 38vh, 380px);
+    border: 1px solid var(--line); border-radius: var(--radius-sm);
+    background: linear-gradient(180deg, #f9fbfe, #eef2f8);
+    overflow: hidden;
+}
+#latticeCanvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+#latticeCanvas:active { cursor: grabbing; }
+
+.lattice-hint {
+    position: absolute; left: 8px; bottom: 8px;
+    font-size: 10.5px; color: var(--muted);
+    background: rgba(255, 255, 255, .85);
+    border: 1px solid var(--line);
+    padding: 3px 8px; border-radius: 20px; pointer-events: none;
+}
+
+.lattice-legend { list-style: none; display: flex; gap: 16px; font-size: 12px; color: var(--ink-2); }
+.lattice-legend li { display: flex; align-items: center; gap: 6px; }
+
+.ion-dot {
+    width: 16px; height: 16px; flex: none;
+    display: grid; place-items: center;
+    border-radius: 50%; color: #fff;
+    font-size: 9px; font-weight: 700; line-height: 1;
+    border: 1px solid rgba(255, 255, 255, .7);
+}
+.ion-dot.cation { background: radial-gradient(circle at 32% 30%, #f9b1b1, #d64545 60%, #8e2020); }
+.ion-dot.anion { background: radial-gradient(circle at 32% 30%, #9fc7ff, #2f6fd0 60%, #123c78); }
+
 .checklist { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; box-shadow: var(--shadow); }
+.check-item.is-done { cursor: pointer; }
+.check-item.is-done:hover { background: #d8ecdf; }
 .checklist .sub-title { margin-top: 0; }
 .checklist-items { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; }
 

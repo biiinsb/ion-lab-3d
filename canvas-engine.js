@@ -5,6 +5,10 @@
  * 조작 규칙 판정은 Rules에 위임하고, 이 클래스는 "규칙이 금지한 조작을 애초에
  * 성립시키지 않는" 책임만 진다. (PRD 7.1 / Blueprint p.6 DON'T 항목)
  */
+
+/** 스프라이트를 화면 크기의 몇 배로 구울지. 확대(zoom)해도 뭉개지지 않을 만큼. */
+const SPRITE_SCALE = 3;
+
 class AtomCanvasEngine {
     constructor(canvasId, callbacks = {}) {
         this.canvas = document.getElementById(canvasId);
@@ -60,14 +64,156 @@ class AtomCanvasEngine {
 
     computeMetrics() {
         const R = Math.min(this.width, this.height) * 0.42;
-        this.shellRadii = [R * 0.30, R * 0.53, R * 0.77, R * 1.0];
-        this.nucleusRadius = Math.max(R * 0.155, 20);
+        // 원자핵 안의 입자를 하나씩 보여주려면 핵이 커야 한다. 그만큼 껍질도 밖으로 민다.
+        this.shellRadii = [R * 0.44, R * 0.63, R * 0.82, R * 1.0];
+        this.nucleusRadius = Math.max(R * 0.17, 22);
+        this.nucleonRadius = Math.max(this.nucleusRadius * 0.32, 5);
         this.electronRadius = Math.min(Math.max(R * 0.034, 5.5), 11);
+        this.sprites = null; // 크기가 바뀌었으니 스프라이트를 다시 굽는다
+    }
+
+    /**
+     * 양성자·중성자·전자 구를 오프스크린 캔버스에 한 번만 그려 두고 재사용한다.
+     * 핵자만 최대 40개(Ca)라 매 프레임 그라디언트를 새로 만들면 보급형 태블릿에서
+     * 프레임이 무너진다. drawImage는 그보다 훨씬 싸다.
+     */
+    buildSprites() {
+        const make = (radius, draw) => {
+            const pad = 2;
+            const size = Math.ceil((radius + pad) * 2 * SPRITE_SCALE);
+            const cv = document.createElement('canvas');
+            cv.width = cv.height = size;
+            const c = cv.getContext('2d');
+            c.scale(SPRITE_SCALE, SPRITE_SCALE);
+            c.translate(radius + pad, radius + pad);
+            draw(c, radius);
+            return { canvas: cv, radius: radius + pad };
+        };
+
+        const ball = (c, r, inner, mid, outer) => {
+            const g = c.createRadialGradient(-r * 0.35, -r * 0.35, r * 0.1, 0, 0, r);
+            g.addColorStop(0, inner);
+            g.addColorStop(0.55, mid);
+            g.addColorStop(1, outer);
+            c.beginPath();
+            c.arc(0, 0, r, 0, Math.PI * 2);
+            c.fillStyle = g;
+            c.fill();
+        };
+
+        const nr = this.nucleonRadius;
+        this.sprites = {
+            // 양성자 — 빨강 + '+' 기호 (색상 외 단서, PRD 10.4)
+            proton: make(nr, (c, r) => {
+                ball(c, r, '#f9a8a8', '#d64545', '#8e2020');
+                c.strokeStyle = 'rgba(255,255,255,0.5)';
+                c.lineWidth = 0.8;
+                c.stroke();
+                c.strokeStyle = '#fff';
+                c.lineWidth = Math.max(1.4, r * 0.22);
+                c.lineCap = 'round';
+                c.beginPath();
+                c.moveTo(-r * 0.42, 0); c.lineTo(r * 0.42, 0);
+                c.moveTo(0, -r * 0.42); c.lineTo(0, r * 0.42);
+                c.stroke();
+            }),
+            // 중성자 — 전하가 없다. 기호를 붙이지 않고 회색 + 매끈한 테두리로만 구분한다.
+            neutron: make(nr, (c, r) => {
+                ball(c, r, '#dfe6ee', '#9aa8b8', '#5d6b7c');
+                c.strokeStyle = 'rgba(255,255,255,0.45)';
+                c.lineWidth = 0.8;
+                c.stroke();
+            }),
+            valence: make(this.electronRadius, (c, r) => {
+                ball(c, r, '#8fc0ff', '#2f6fd0', '#123c78');
+                c.strokeStyle = 'rgba(255,255,255,0.9)';
+                c.lineWidth = 1.8;
+                c.stroke();
+                c.fillStyle = '#fff';
+                c.font = `bold ${Math.max(8, r * 1.1)}px "Malgun Gothic", sans-serif`;
+                c.textAlign = 'center';
+                c.textBaseline = 'middle';
+                c.fillText('−', 0, 0);
+            }),
+            inner: make(this.electronRadius * 0.82, (c, r) => {
+                ball(c, r, '#d5dfea', '#9aabbe', '#6c7c8f');
+                c.strokeStyle = 'rgba(76, 90, 107, 0.85)';
+                c.lineWidth = 1.2;
+                c.setLineDash([2, 2]);
+                c.stroke();
+                c.setLineDash([]);
+                c.fillStyle = '#fff';
+                c.font = `bold ${Math.max(7, r * 1.1)}px "Malgun Gothic", sans-serif`;
+                c.textAlign = 'center';
+                c.textBaseline = 'middle';
+                c.fillText('−', 0, 0);
+            })
+        };
+    }
+
+    drawSprite(sprite, x, y, scale) {
+        const r = sprite.radius * scale;
+        this.ctx.drawImage(sprite.canvas, x - r, y - r, r * 2, r * 2);
+    }
+
+    /**
+     * 원자핵 안의 핵자 위치를 만든다. 피보나치 구면 분포로 결정론적·균일하게 배치한다.
+     * 양성자와 중성자를 번갈아 섞어 한쪽으로 몰리지 않게 한다.
+     */
+    buildNucleons(atom) {
+        const total = atom.protonCount + atom.neutronCount;
+        const out = [];
+
+        // 양성자/중성자를 인덱스에 고르게 섞는다 (예: 11p 12n → p n p n …)
+        const flags = [];
+        let p = atom.protonCount, n = atom.neutronCount;
+        for (let i = 0; i < total; i++) {
+            const takeProton = p > 0 && (n === 0 || p / (p + n) >= 0.5);
+            flags.push(takeProton);
+            if (takeProton) p--; else n--;
+        }
+
+        const golden = Math.PI * (1 + Math.sqrt(5));
+        for (let i = 0; i < total; i++) {
+            const phi = Math.acos(1 - (2 * (i + 0.5)) / total);
+            const theta = golden * i;
+            // 표면에만 붙지 않도록 반경을 살짝 흩는다
+            const r = 1 - 0.34 * ((i * 0.618) % 1);
+            out.push({
+                isProton: flags[i],
+                ux: r * Math.sin(phi) * Math.cos(theta),
+                uy: r * Math.sin(phi) * Math.sin(theta),
+                uz: r * Math.cos(phi)
+            });
+        }
+        return out;
     }
 
     /** 터치는 손가락 접촉면이 넓어 마우스보다 넉넉한 히트 반경이 필요하다. */
     hitRadius(isTouch) {
-        return isTouch ? this.electronRadius * 3.0 : this.electronRadius * 2.2;
+        return isTouch ? this.electronRadius * 3.6 : this.electronRadius * 2.8;
+    }
+
+    /**
+     * 전자를 잡으려다 살짝 빗나갔을 때 모형이 홱 돌아가 버리면 조작이 어긋난다.
+     * 히트 반경보다 넓은 이 '의도 반경' 안에서 시작한 드래그는 회전으로 넘기지 않는다.
+     * (아무 일도 일어나지 않으므로 다시 시도하면 된다)
+     */
+    intentRadius(isTouch) {
+        return this.hitRadius(isTouch) * 1.7;
+    }
+
+    /** mx, my 근처에 전자가 있는가? (빗나감 판정용 — 내각/최외각 가리지 않는다) */
+    hasElectronNear(mx, my, radius) {
+        for (let s = 0; s < this.shellsData.length; s++) {
+            const slots = this.shellsData[s].slots;
+            for (let i = 0; i < slots.length; i++) {
+                if (!slots[i].filled) continue;
+                const pos = this.getSlotScreenPos(s, i);
+                if (Math.hypot(pos.x - mx, pos.y - my) < radius) return true;
+            }
+        }
+        return false;
     }
 
     // ── 입력 ────────────────────────────────────────────────────
@@ -159,6 +305,10 @@ class AtomCanvasEngine {
                 if (navigator.vibrate) navigator.vibrate(8);
                 return;
             }
+
+            // 전자를 노렸으나 살짝 빗나간 경우 — 회전시키지 않고 그냥 무시한다.
+            // 회전해 버리면 노리던 전자가 달아나 다시 잡기가 더 어려워진다.
+            if (this.hasElectronNear(x, y, this.intentRadius(isTouch))) return;
         }
 
         this.isOrbitRotating = true;
@@ -333,6 +483,7 @@ class AtomCanvasEngine {
         this.shellsData = [];
         this.particles = [];
         this.draggedElectron = null;
+        this.nucleons = this.buildNucleons(atom);
 
         atom.neutralShells.forEach((electronCount, sIndex) => {
             const capacity = Rules.shellCapacity(sIndex);
@@ -456,14 +607,20 @@ class AtomCanvasEngine {
 
     render() {
         if (!this.currentAtom) return;
+        if (!this.sprites) this.buildSprites();
         this.ctx.clearRect(0, 0, this.width, this.height);
 
         const shells = this.getShells();
         const valenceIndex = Rules.getValenceShellIndex(shells);
         const renderList = [];
 
-        const nucleus = this.project3D(0, 0, 0);
-        renderList.push({ type: 'nucleus', z: nucleus.z, pos: nucleus });
+        // 원자핵 — 양성자와 중성자를 하나씩 그린다. 핵자도 궤도·전자와 함께 깊이 정렬해야
+        // 앞뒤 겹침이 맞는다.
+        const R = this.nucleusRadius;
+        this.nucleons.forEach(n => {
+            const pos = this.project3D(n.ux * R, n.uy * R, n.uz * R);
+            renderList.push({ type: 'nucleon', z: pos.z, pos, isProton: n.isProton });
+        });
 
         this.shellsData.forEach((shell, sIndex) => {
             const radius = this.shellRadii[sIndex];
@@ -497,15 +654,72 @@ class AtomCanvasEngine {
 
         renderList.forEach(item => {
             if (item.type === 'orbit') this.drawOrbit(item);
-            else if (item.type === 'nucleus') this.drawNucleus(item.pos);
+            else if (item.type === 'nucleon') {
+                this.drawSprite(item.isProton ? this.sprites.proton : this.sprites.neutron,
+                    item.pos.x, item.pos.y, item.pos.scale);
+            }
             else if (item.type === 'slot') this.drawSlot(item.pos, item.isDroppable);
             else if (item.type === 'electron') this.drawElectron(item.pos, item.isValence, false);
         });
+
+        this.drawNucleusLabel();
 
         if (this.draggedElectron) {
             this.drawElectron({ ...this.draggedElectron, scale: this.camera.zoom }, true, true);
         }
         this.drawParticles();
+    }
+
+    /**
+     * 원자핵 구성을 캔버스 좌상단에 고정 표기한다.
+     * 모형 위에 띄우면 회전·확대에 따라 궤도나 전자와 겹치므로 고정 위치가 안전하다.
+     */
+    drawNucleusLabel() {
+        const ctx = this.ctx;
+        const atom = this.currentAtom;
+        const x = 12, y = 12;
+
+        ctx.save();
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.font = 'bold 13px "Malgun Gothic", sans-serif';
+
+        const rows = [
+            { color: '#d64545', mark: '+', text: `양성자 ${atom.protonCount}` },
+            { color: '#9aa8b8', mark: '', text: `중성자 ${atom.neutronCount} (전하 없음)` }
+        ];
+
+        ctx.fillStyle = 'rgba(255,255,255,0.9)';
+        ctx.strokeStyle = 'rgba(200,211,224,0.9)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.roundRect(x, y, 164, 52, 8);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = '#16202c';
+        ctx.font = 'bold 12.5px "Malgun Gothic", sans-serif';
+        ctx.fillText(`${atom.symbol} 원자핵`, x + 10, y + 14);
+
+        ctx.font = '11.5px "Malgun Gothic", sans-serif';
+        rows.forEach((row, i) => {
+            const ry = y + 30 + i * 14;
+            ctx.beginPath();
+            ctx.arc(x + 15, ry, 4.5, 0, Math.PI * 2);
+            ctx.fillStyle = row.color;
+            ctx.fill();
+            if (row.mark) {
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 7px "Malgun Gothic", sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(row.mark, x + 15, ry + 0.5);
+                ctx.textAlign = 'left';
+            }
+            ctx.fillStyle = '#46586c';
+            ctx.font = '11.5px "Malgun Gothic", sans-serif';
+            ctx.fillText(row.text, x + 25, ry);
+        });
+        ctx.restore();
     }
 
     drawOrbit({ points, shellIndex, isValence, pulse }) {
@@ -539,33 +753,6 @@ class AtomCanvasEngine {
         ctx.fillText(SHELL_NAMES[shellIndex] + (isValence ? ' 최외각' : ''), label.x + 7, label.y);
     }
 
-    drawNucleus(pos) {
-        const ctx = this.ctx;
-        const r = this.nucleusRadius * pos.scale;
-        const atom = this.currentAtom;
-
-        const grad = ctx.createRadialGradient(pos.x - r * 0.35, pos.y - r * 0.35, r * 0.1, pos.x, pos.y, r);
-        grad.addColorStop(0, '#f08e8e');
-        grad.addColorStop(0.55, '#d64545');
-        grad.addColorStop(1, '#8e2020');
-
-        ctx.beginPath();
-        ctx.arc(pos.x, pos.y, r, 0, Math.PI * 2);
-        ctx.fillStyle = grad;
-        ctx.fill();
-        ctx.strokeStyle = 'rgba(255,255,255,0.55)';
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillStyle = '#ffffff';
-        ctx.font = `bold ${Math.max(11, r * 0.42)}px "Malgun Gothic", sans-serif`;
-        ctx.fillText(atom.symbol, pos.x, pos.y - r * 0.22);
-        ctx.font = `bold ${Math.max(10, r * 0.34)}px "Malgun Gothic", sans-serif`;
-        ctx.fillText(`+${atom.protonCount}`, pos.x, pos.y + r * 0.34);
-    }
-
     drawSlot(pos, isDroppable) {
         const ctx = this.ctx;
         const r = this.electronRadius * 0.75 * pos.scale;
@@ -586,44 +773,18 @@ class AtomCanvasEngine {
      * 최외각 전자는 밝은 파랑 + 흰 테두리 + 큰 크기, 내각 전자는 회청색 + 점선 테두리 + 작은 크기.
      */
     drawElectron(pos, isValence, isDragging) {
-        const ctx = this.ctx;
+        const sprite = isValence ? this.sprites.valence : this.sprites.inner;
         const scale = pos.scale || 1;
-        const r = this.electronRadius * (isValence ? 1 : 0.82) * scale;
 
-        const grad = ctx.createRadialGradient(pos.x - r * 0.35, pos.y - r * 0.35, r * 0.1, pos.x, pos.y, r);
-        if (isValence) {
-            grad.addColorStop(0, '#8fc0ff');
-            grad.addColorStop(0.5, '#2f6fd0');
-            grad.addColorStop(1, '#123c78');
-        } else {
-            grad.addColorStop(0, '#d5dfea');
-            grad.addColorStop(0.5, '#9aabbe');
-            grad.addColorStop(1, '#6c7c8f');
+        if (isDragging) {
+            this.ctx.save();
+            this.ctx.shadowColor = 'rgba(47, 111, 208, 0.55)';
+            this.ctx.shadowBlur = 12;
+            this.drawSprite(sprite, pos.x, pos.y, scale * 1.15);
+            this.ctx.restore();
+            return;
         }
-
-        ctx.beginPath();
-        ctx.arc(pos.x, pos.y, r, 0, Math.PI * 2);
-        ctx.fillStyle = grad;
-        ctx.fill();
-
-        if (isValence) {
-            ctx.strokeStyle = isDragging ? '#ffffff' : 'rgba(255,255,255,0.9)';
-            ctx.lineWidth = isDragging ? 2.5 : 1.8;
-            ctx.setLineDash([]);
-        } else {
-            // 내각 전자는 '잠긴 상태'임을 점선 테두리로 알린다
-            ctx.strokeStyle = 'rgba(76, 90, 107, 0.85)';
-            ctx.lineWidth = 1.2;
-            ctx.setLineDash([2, 2]);
-        }
-        ctx.stroke();
-        ctx.setLineDash([]);
-
-        ctx.fillStyle = '#ffffff';
-        ctx.font = `bold ${Math.max(8, r * 1.1)}px "Malgun Gothic", sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('−', pos.x, pos.y);
+        this.drawSprite(sprite, pos.x, pos.y, scale);
     }
 
     drawParticles() {

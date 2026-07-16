@@ -271,6 +271,99 @@ function run() {
     ok('  판정 토스트 없음(정답 판정 미적용)', d.getElementById('toast').hidden === true,
         d.getElementById('toast').textContent);
 
+    log('\n== O. 이온식 / 원소 기호 구분 ==');
+    // 중성 원자를 '이온식: Na (원자)'라고 부르면 오개념이 된다.
+    ev('switchView("ion"); applyMode("explore"); selectElement(11);');
+    ev('engine.setAnimateOrbit(false)');
+    eq('중성 원자 → 라벨이 "원소 기호"', d.getElementById('statFormulaLabel').textContent, '원소 기호');
+    eq('중성 원자 → 값에 (원자) 같은 군더더기 없음', d.getElementById('statIonFormula').textContent, 'Na');
+    ok('중성 상태에서 "이온식" 표기 없음', !/이온식/.test(d.getElementById('statFormulaLabel').textContent));
+
+    const mNa = at(2, 0);
+    mouse('mousedown', canvas, mNa.x, mNa.y);
+    const wrO = well.getBoundingClientRect();
+    mouse('mousemove', w, wrO.left + wrO.width / 2, wrO.top + wrO.height / 2);
+    mouse('mouseup', w, wrO.left + wrO.width / 2, wrO.top + wrO.height / 2);
+    eq('이온이 되면 → 라벨이 "이온식"', d.getElementById('statFormulaLabel').textContent, '이온식');
+    eq('이온이 되면 → 값이 Na⁺', d.getElementById('statIonFormula').textContent, 'Na⁺');
+
+    log('\n== P. 원자핵 = 양성자 + 중성자 ==');
+    ev('selectElement(11)');
+    eq('핵자 수 = 양성자 + 중성자', ev('engine.nucleons.length'), 23);
+    eq('양성자 수', ev('engine.nucleons.filter(n => n.isProton).length'), 11);
+    eq('중성자 수', ev('engine.nucleons.filter(n => !n.isProton).length'), 12);
+    ev('selectElement(20)');
+    eq('Ca 핵자 수 (20p + 20n)', ev('engine.nucleons.length'), 40);
+    eq('Ca 양성자 수', ev('engine.nucleons.filter(n => n.isProton).length'), 20);
+    ok('핵자가 핵 반경 안에 있음',
+        ev('engine.nucleons.every(n => Math.hypot(n.ux, n.uy, n.uz) <= 1.001)'));
+    ok('스프라이트 캐시 사용 (매 프레임 그라디언트 생성 안 함)', ev('!!engine.sprites'));
+    ok('양성자·중성자 스프라이트 존재', ev('!!(engine.sprites.proton && engine.sprites.neutron)'));
+
+    log('\n== Q. 전자를 노리다 빗나가도 모형이 돌지 않는다 ==');
+    ev('selectElement(11)');
+    ev('engine.setAnimateOrbit(false)');
+    ev('engine.resetView()');
+    const ry0 = ev('engine.camera.ry');
+    const near = at(2, 0);
+    const miss = ev(`engine.intentRadius(false)`);
+    // 전자 바로 옆(히트 반경 밖, 의도 반경 안)을 눌러 본다
+    mouse('mousedown', canvas, near.x + miss * 0.8, near.y);
+    ok('빗나감 → 전자를 집지 않음', ev('engine.draggedElectron') === null);
+    ok('빗나감 → 회전도 시작하지 않음', ev('engine.isOrbitRotating') === false);
+    mouse('mousemove', w, near.x + miss * 0.8 + 60, near.y + 40);
+    eq('빗나감 → 카메라 각도 불변', ev('engine.camera.ry'), ry0);
+    mouse('mouseup', w, near.x, near.y);
+
+    // 전자에서 충분히 먼 빈 공간에서는 정상적으로 회전해야 한다
+    mouse('mousedown', canvas, 18, 18);
+    ok('빈 공간 → 회전 시작', ev('engine.isOrbitRotating') === true);
+    mouse('mousemove', w, 90, 40);
+    ok('빈 공간 → 카메라가 실제로 돌아감', ev('engine.camera.ry') !== ry0);
+    mouse('mouseup', w, 90, 40);
+
+    log('\n== R. 퍼즐 조각 이온 카드 ==');
+    ev('switchView("compound")');
+    const countArcs = (display, type) => {
+        const card = [...d.querySelectorAll('.ion-card')].find(c => c.dataset.display === display);
+        return (card.querySelector('.puzzle path').getAttribute('d').match(/A /g) || []).length;
+    };
+    eq('Na⁺ 홈 1개', countArcs('Na⁺'), 1);
+    eq('Mg²⁺ 홈 2개', countArcs('Mg²⁺'), 2);
+    eq('Al³⁺ 홈 3개', countArcs('Al³⁺'), 3);
+    eq('Cl⁻ 돌기 1개', countArcs('Cl⁻'), 1);
+    eq('O²⁻ 돌기 2개', countArcs('O²⁻'), 2);
+    // sweep 방향이 오목/볼록을 가른다: 양이온은 0(안쪽), 음이온은 1(바깥쪽)
+    const pathOf = (display) => [...d.querySelectorAll('.ion-card')]
+        .find(c => c.dataset.display === display).querySelector('.puzzle path').getAttribute('d');
+    ok('양이온은 오목(sweep 0)', /A 8\.5 8\.5 0 0 0/.test(pathOf('Na⁺')), pathOf('Na⁺'));
+    ok('음이온은 볼록(sweep 1)', /A 8\.5 8\.5 0 0 1/.test(pathOf('Cl⁻')), pathOf('Cl⁻'));
+    ok('양이온 홈은 오른쪽 변 (음이온과 마주 봄)', /L 126 /.test(pathOf('Na⁺')));
+    ok('음이온 돌기는 왼쪽 변', /L 0 /.test(pathOf('Cl⁻')));
+
+    log('\n== S. 3D 이온 결정 격자 ==');
+    ev('state.zoneIons = []; renderCompoundZone();');
+    ev('addIonToZone(findCard("Na⁺")); addIonToZone(findCard("Cl⁻")); closeModal();');
+    ok('완성 시 결정 패널 노출', d.getElementById('latticePanel').hidden === false);
+    eq('화학식 표기', d.getElementById('latticeFormula').textContent, 'NaCl');
+    eq('개수비 표기', d.getElementById('latticeRatio').textContent, 'Na⁺ : Cl⁻ = 1 : 1');
+    eq('격자 자리 수 (4×4×4)', ev('lattice.sites.length'), 64);
+    eq('1:1은 정확히 반반', ev('lattice.sites.filter(s => s.isCation).length'), 32);
+    ok('1:1은 실제 암염 구조', ev('lattice.isRockSalt()'));
+    ok('결정임을 명시 (분자가 아님)', /분자가 아니라 결정/.test(d.getElementById('latticeNote').textContent));
+    ok('NaCl은 실제 구조와 같다고 안내', /실제 NaCl 결정 구조와 같습니다/.test(d.getElementById('latticeNote').textContent));
+    ok('이온 반지름을 화면에 노출', /181pm/.test(d.getElementById('latticeAnionName').textContent));
+
+    // 1:1이 아닌 화합물은 모식도임을 반드시 밝혀야 한다
+    ev('state.zoneIons = []; renderCompoundZone();');
+    ev('addIonToZone(findCard("Ca²⁺")); addIonToZone(findCard("Cl⁻")); addIonToZone(findCard("Cl⁻")); closeModal();');
+    eq('CaCl₂ 개수비 표기', d.getElementById('latticeRatio').textContent, 'Ca²⁺ : Cl⁻ = 1 : 2');
+    ok('CaCl₂는 암염 구조가 아님', ev('lattice.isRockSalt()') === false);
+    ok('CaCl₂는 모식도임을 명시', /학습용 모식도/.test(d.getElementById('latticeNote').textContent));
+    ok('실제 구조와 다름을 명시', /실제 CaCl₂의 결정 구조와는 다릅니다/.test(d.getElementById('latticeNote').textContent));
+
+    ev('switchView("ion")');
+
     log('\n== N. 뷰 컨트롤 ==');
     const z0 = ev('engine.camera.zoom');
     d.getElementById('zoomInBtn').click();

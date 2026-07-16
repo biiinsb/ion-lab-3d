@@ -11,3 +11,8 @@ Desktop.ini
 # 작업 중 산출물
 *.log
 /tmp/
+
+# 이 폴더에 함께 놓여 있는 별개 프로젝트들. ion-lab-3d 저장소의 일부가 아니다.
+buyeoai/science-lab-main/
+science fortress/
+node_modules/

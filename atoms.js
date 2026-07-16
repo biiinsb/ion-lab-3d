@@ -5,6 +5,11 @@
  * 모든 원소는 다음 항등식을 만족해야 한다:
  *   protonCount - (neutralElectronCount + targetElectronChange) === targetCharge
  * (isIonActivityEnabled가 false인 원소는 검사 대상에서 제외)
+ *
+ * 용어 원칙 — 2022 개정 중학교 과학 교육과정에는 '옥텟 규칙'·'듀엣 규칙'이라는 용어가
+ * 나오지 않는다. 학생에게 보이는 문구에서는 이 용어를 쓰지 않고
+ * "비활성 기체와 같은 안정한 전자 배치"로 풀어서 설명한다.
+ * ruleType은 내부 분기용 키일 뿐 화면에 노출되지 않는다.
  */
 
 const SHELL_CAPACITY = [2, 8, 8, 8]; // K, L, M, N (학습용 단순화 모형)
@@ -18,8 +23,8 @@ const ELEMENTS = {
         isIonActivityEnabled: true, ruleType: 'duet',
         targetElectronChange: -1, targetCharge: 1, targetShells: [],
         ionFormula: 'H+', ionFormulaDisplay: 'H⁺', ionName: '수소 이온', ionType: 'cation',
-        explanation: '수소는 첫 번째 껍질을 채우는 듀엣 규칙의 예외 원소입니다. 전자 1개를 잃어 양성자만 남은 H⁺가 됩니다.',
-        description: '우주에서 가장 흔한 원소입니다. 옥텟 규칙이 아니라 첫 번째 껍질(최대 2개)을 기준으로 하는 듀엣 규칙을 적용합니다.'
+        explanation: '수소는 전자 1개를 잃어 양성자만 남은 H⁺가 됩니다.',
+        description: '우주에서 가장 흔한 원소입니다. 전자 껍질이 하나뿐이고 그 껍질은 전자 2개로 가득 차므로, 다른 원소와 달리 전자 8개를 기준으로 생각하지 않습니다.'
     },
     2: {
         atomicNumber: 2, symbol: 'He', koreanName: '헬륨', category: 'noble-gas',
@@ -54,7 +59,7 @@ const ELEMENTS = {
         protonCount: 5, neutronCount: 6, neutralElectronCount: 5,
         neutralShells: [2, 3], valenceElectrons: 3,
         isIonActivityEnabled: false, ruleType: 'covalent',
-        disabledReason: '이 원소는 단순히 전자를 얻거나 잃는 옥텟 모형만으로 대표적인 이온을 설명하기 어렵습니다. 주로 다른 원자와 전자를 공유하여 결합합니다.',
+        disabledReason: '이 원소는 전자를 얻거나 잃는 것만으로는 대표적인 이온을 설명하기 어렵습니다. 주로 다른 원자와 전자를 공유하여 결합합니다.',
         description: '반금속 원소로 유리나 반도체 재료에 쓰입니다. 이온 결합보다는 공유 결합을 합니다.'
     },
     6: {
@@ -62,7 +67,7 @@ const ELEMENTS = {
         protonCount: 6, neutronCount: 6, neutralElectronCount: 6,
         neutralShells: [2, 4], valenceElectrons: 4,
         isIonActivityEnabled: false, ruleType: 'covalent',
-        disabledReason: '이 원소는 단순히 전자를 얻거나 잃는 옥텟 모형만으로 대표적인 이온을 설명하기 어렵습니다. 주로 다른 원자와 전자를 공유하여 결합합니다.',
+        disabledReason: '이 원소는 전자를 얻거나 잃는 것만으로는 대표적인 이온을 설명하기 어렵습니다. 주로 다른 원자와 전자를 공유하여 결합합니다.',
         description: '생명체의 기초가 되는 원소입니다. 최외각 전자 4개를 다른 원자와 공유하여 결합합니다.'
     },
     7: {
@@ -138,7 +143,7 @@ const ELEMENTS = {
         protonCount: 14, neutronCount: 14, neutralElectronCount: 14,
         neutralShells: [2, 8, 4], valenceElectrons: 4,
         isIonActivityEnabled: false, ruleType: 'covalent',
-        disabledReason: '이 원소는 단순히 전자를 얻거나 잃는 옥텟 모형만으로 대표적인 이온을 설명하기 어렵습니다. 주로 다른 원자와 전자를 공유하여 결합합니다.',
+        disabledReason: '이 원소는 전자를 얻거나 잃는 것만으로는 대표적인 이온을 설명하기 어렵습니다. 주로 다른 원자와 전자를 공유하여 결합합니다.',
         description: '반도체의 주원료이자 지각에서 산소 다음으로 풍부한 원소입니다. 공유 결합을 합니다.'
     },
     15: {
@@ -217,19 +222,23 @@ const PERIODIC_LAYOUT = [
     { z: 19, row: 4, col: 1 }, { z: 20, row: 4, col: 2 }
 ];
 
-/** 화합물 만들기 탭에서 제공하는 이온 카드 */
+/**
+ * 화합물 만들기 탭에서 제공하는 이온 카드.
+ * ionicRadius는 실제 이온 반지름(pm)이다. 3D 결정 모형에서 상대 크기로 쓰인다 —
+ * 전자를 잃은 양이온은 작아지고 전자를 얻은 음이온은 커진다는 사실이 눈에 보인다.
+ */
 const ION_CARDS = {
     cations: [
-        { symbol: 'Na', display: 'Na⁺', charge: 1, koreanName: '나트륨 이온' },
-        { symbol: 'K', display: 'K⁺', charge: 1, koreanName: '칼륨 이온' },
-        { symbol: 'Mg', display: 'Mg²⁺', charge: 2, koreanName: '마그네슘 이온' },
-        { symbol: 'Ca', display: 'Ca²⁺', charge: 2, koreanName: '칼슘 이온' },
-        { symbol: 'Al', display: 'Al³⁺', charge: 3, koreanName: '알루미늄 이온' }
+        { symbol: 'Na', display: 'Na⁺', charge: 1, koreanName: '나트륨 이온', ionicRadius: 102 },
+        { symbol: 'K', display: 'K⁺', charge: 1, koreanName: '칼륨 이온', ionicRadius: 138 },
+        { symbol: 'Mg', display: 'Mg²⁺', charge: 2, koreanName: '마그네슘 이온', ionicRadius: 72 },
+        { symbol: 'Ca', display: 'Ca²⁺', charge: 2, koreanName: '칼슘 이온', ionicRadius: 100 },
+        { symbol: 'Al', display: 'Al³⁺', charge: 3, koreanName: '알루미늄 이온', ionicRadius: 54 }
     ],
     anions: [
-        { symbol: 'Cl', display: 'Cl⁻', charge: -1, koreanName: '염화 이온' },
-        { symbol: 'F', display: 'F⁻', charge: -1, koreanName: '플루오린화 이온' },
-        { symbol: 'O', display: 'O²⁻', charge: -2, koreanName: '산화 이온' }
+        { symbol: 'Cl', display: 'Cl⁻', charge: -1, koreanName: '염화 이온', ionicRadius: 181 },
+        { symbol: 'F', display: 'F⁻', charge: -1, koreanName: '플루오린화 이온', ionicRadius: 133 },
+        { symbol: 'O', display: 'O²⁻', charge: -2, koreanName: '산화 이온', ionicRadius: 140 }
     ]
 };
 
