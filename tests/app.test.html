@@ -271,6 +271,29 @@ function run() {
     ok('  판정 토스트 없음(정답 판정 미적용)', d.getElementById('toast').hidden === true,
         d.getElementById('toast').textContent);
 
+    log('\n== T. 주기율표 셀 크기가 모두 같다 ==');
+    // 13족 앞 간격을 margin으로 주면 그 칸만 폭이 깎여 B·Al만 작아진다.
+    // 간격은 그리드의 간격 전용 칸으로 만들어야 한다.
+    ev('switchView("ion")');
+    const cells = [...d.querySelectorAll('.cell')];
+    eq('셀 20개', cells.length, 20);
+    const sizeKeys = new Set(cells.map(c => {
+        const r = c.getBoundingClientRect();
+        return r.width.toFixed(2) + 'x' + r.height.toFixed(2);
+    }));
+    ok('모든 셀의 크기가 동일', sizeKeys.size === 1, '크기 종류: ' + [...sizeKeys].join(', '));
+    const box = (sym) => cells.find(c => c.querySelector('.sym').textContent === sym).getBoundingClientRect();
+    ok('셀이 정사각형', Math.abs(box('H').width - box('H').height) < 0.5);
+    // 전이금속 생략 구간은 일반 칸 사이보다 확실히 넓어야 한다
+    const normalGap = box('Be').left - box('Li').right;
+    const skipGap = box('B').left - box('Be').right;
+    ok('전이금속 생략 구간이 더 넓다', skipGap > normalGap * 2,
+        `보통 ${normalGap.toFixed(1)}px vs 생략 구간 ${skipGap.toFixed(1)}px`);
+    ok('3주기도 같은 간격', Math.abs((box('Al').left - box('Mg').right) - skipGap) < 0.5);
+    ok('주기율표가 패널을 넘지 않음',
+        d.getElementById('periodicTable').getBoundingClientRect().width <=
+        d.querySelector('.panel-elements').getBoundingClientRect().width);
+
     log('\n== O. 이온식 / 원소 기호 구분 ==');
     // 중성 원자를 '이온식: Na (원자)'라고 부르면 오개념이 된다.
     ev('switchView("ion"); applyMode("explore"); selectElement(11);');

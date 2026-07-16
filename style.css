@@ -163,9 +163,11 @@ body {
 
 /* ── ① 미니 주기율표 ───────────────────────────────────── */
 
+/* 1·2족과 13~18족 사이의 생략 구간(전이금속)을 간격 전용 칸으로 벌린다.
+   칸에 margin을 주면 그 칸만 폭이 깎여 박스 크기가 달라진다. */
 .ptable {
     display: grid;
-    grid-template-columns: repeat(8, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr)) 9px repeat(6, minmax(0, 1fr));
     gap: 3px;
 }
 
@@ -183,9 +185,6 @@ body {
 
 .cell .z { position: absolute; top: 2px; left: 3px; font-size: 8.5px; color: var(--muted); line-height: 1; }
 .cell .sym { font-size: 15px; font-weight: 700; line-height: 1; margin-top: 4px; }
-
-/* 1·2족과 13~18족 사이의 생략 구간(전이금속)을 시각적으로 벌린다 */
-.cell[data-col="3"] { margin-left: 7px; }
 
 .cell.cat-metal { background: #e9f3ec; border-color: #b9d8c4; }
 .cell.cat-nonmetal { background: #eaf1fb; border-color: #bed3ef; }

@@ -98,7 +98,8 @@ function buildPeriodicTable() {
         cell.dataset.z = z;
         cell.dataset.col = col;
         cell.style.gridRow = row;
-        cell.style.gridColumn = col;
+        // 3번째 그리드 칸은 전이금속 생략 구간을 나타내는 간격이므로 13족부터는 한 칸 민다
+        cell.style.gridColumn = col <= 2 ? col : col + 1;
         cell.title = `${el.koreanName} (${el.symbol})` +
             (el.isIonActivityEnabled ? '' : ' — 이 활동에서는 이온을 만들지 않습니다');
         cell.setAttribute('aria-label',
