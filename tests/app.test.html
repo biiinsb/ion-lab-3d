@@ -227,6 +227,18 @@ function run() {
     d.getElementById('modalBtn').click();
     eq('  완성 후 결합 영역 비워짐', ev('state.zoneIons.length'), 0);
 
+    // 완성 팝업을 바깥 클릭으로 닫아 이온이 남은 채 다음 이온을 넣으면, 앞 화합물에
+    // 붙지 않고 새 화합물이 시작돼야 한다 (사용자 제보 버그).
+    log('\n== J2. 완성된 화합물에 추가하면 붙지 않고 새로 시작 ==');
+    ev('state.zoneIons = []; renderCompoundZone();');
+    ev('addIonToZone(findCard("Na⁺")); addIonToZone(findCard("Cl⁻"));'); // NaCl 완성
+    ok('NaCl 완성 상태', ev('Rules.evaluateCompound(state.zoneIons).status') === 'success');
+    ev('closeModal();'); // 바깥 클릭처럼 이온은 남긴 채 팝업만 닫음
+    ev('addIonToZone(findCard("K⁺"));'); // 이어서 새 이온 추가
+    eq('  완성 화합물에 추가 → 새로 시작 (개수 1)', ev('state.zoneIons.length'), 1);
+    eq('  남은 이온은 방금 넣은 것', ev('state.zoneIons[0].display'), 'K⁺');
+    ev('state.zoneIons = []; renderCompoundZone();');
+
     // Na⁺2 + Cl⁻2 → 최소 정수비 위반 (PRD 19)
     log('\n== K. PRD 19 — Na⁺2 + Cl⁻2는 차단된다 ==');
     ev('state.zoneIons = []; renderCompoundZone();');

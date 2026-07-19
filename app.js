@@ -545,6 +545,14 @@ let zoneIonSeq = 0;
 let completeSeq = 0;
 
 function addIonToZone(card) {
+    // 이미 완성된 화합물에 이온을 더하면 거기에 붙이지 않고, 그 화합물을 치운 뒤
+    // 새 화합물을 시작한다. (완성 팝업을 바깥 클릭으로 닫아 이온이 남아 있어도
+    // 다음에 넣는 이온이 앞 화합물에 엉겨 붙지 않게 한다.)
+    if (Rules.evaluateCompound(state.zoneIons).status === 'success') {
+        state.zoneIons = [];
+        $('latticePanel').hidden = true;
+        lattice.stop();
+    }
     state.zoneIons.push({ id: ++zoneIonSeq, ...card });
     renderCompoundZone();
 }
