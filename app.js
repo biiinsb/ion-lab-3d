@@ -553,6 +553,15 @@ function addIonToZone(card) {
         $('latticePanel').hidden = true;
         lattice.stop();
     }
+    // 이 활동은 양이온 한 종류 + 음이온 한 종류로만 만든다. 같은 부호의 다른 원소를
+    // 더하려 하면 붙이지 않는다 — 양이온끼리(또는 음이온끼리)는 서로 결합하지 않으니까.
+    const sameSign = state.zoneIons.filter(i => Math.sign(i.charge) === Math.sign(card.charge));
+    if (sameSign.some(i => i.display !== card.display)) {
+        const kind = card.charge > 0 ? '양이온' : '음이온';
+        toast(`${kind}은 한 종류만 쓸 수 있어요 — ${kind}끼리는 서로 결합하지 않아요. `
+            + `${sameSign[0].display}을 비우고 넣거나 같은 이온을 더하세요.`, 'is-warn');
+        return;
+    }
     state.zoneIons.push({ id: ++zoneIonSeq, ...card });
     renderCompoundZone();
 }

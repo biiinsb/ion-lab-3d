@@ -239,6 +239,18 @@ function run() {
     eq('  남은 이온은 방금 넣은 것', ev('state.zoneIons[0].display'), 'K⁺');
     ev('state.zoneIons = []; renderCompoundZone();');
 
+    // 같은 부호의 다른 원소는 붙지 않는다 — 양이온끼리/음이온끼리는 결합하지 않음 (사용자 제보)
+    log('\n== J3. 서로 다른 양이온/음이온은 붙지 않는다 ==');
+    ev('state.zoneIons = []; renderCompoundZone();');
+    ev('addIonToZone(findCard("K⁺")); addIonToZone(findCard("Ca²⁺"));');
+    eq('K⁺에 Ca²⁺는 안 붙음 (개수 1 유지)', ev('state.zoneIons.length'), 1);
+    eq('  남은 건 처음 넣은 K⁺', ev('state.zoneIons[0].display'), 'K⁺');
+    ev('addIonToZone(findCard("K⁺"));'); // 같은 양이온은 허용 (K⁺2 → K₂O 등)
+    eq('  같은 양이온은 허용', ev('state.zoneIons.length'), 2);
+    ev('addIonToZone(findCard("Cl⁻")); addIonToZone(findCard("F⁻"));');
+    ok('  다른 음이온 F⁻도 안 붙음', ev('!state.zoneIons.some(i => i.display === "F⁻")'));
+    ev('state.zoneIons = []; renderCompoundZone();');
+
     // Na⁺2 + Cl⁻2 → 최소 정수비 위반 (PRD 19)
     log('\n== K. PRD 19 — Na⁺2 + Cl⁻2는 차단된다 ==');
     ev('state.zoneIons = []; renderCompoundZone();');
