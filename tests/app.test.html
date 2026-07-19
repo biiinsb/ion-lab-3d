@@ -217,8 +217,10 @@ function run() {
     cards.find(c => c.dataset.display === 'Na⁺').click();
     eq('Na⁺ 1개 → 양전하 과다', d.getElementById('sumStatus').textContent, '양전하 과다');
     anions.find(c => c.dataset.display === 'Cl⁻').click();
-    ok('NaCl 완성 모달', d.getElementById('modalOverlay').hidden === false);
-    eq('  화학식', d.getElementById('modalFormula').textContent, 'NaCl');
+    // 완성 모달은 맞물린 모형을 가리지 않도록 지연되어 뜬다 → 완성 즉시엔 아직 숨겨진 상태.
+    // (완성 자체는 즉시 등록되어 모달 내용·체크리스트·격자는 곧바로 준비된다.)
+    ok('NaCl 완성 모달은 즉시 뜨지 않고 지연됨', d.getElementById('modalOverlay').hidden === true);
+    eq('  화학식(모달 내용은 즉시 준비)', d.getElementById('modalFormula').textContent, 'NaCl');
     ok('  이름 노출', /염화 나트륨/.test(d.getElementById('modalBody').textContent));
     ok('  체크리스트 반영', ev('state.completed.has("NaCl")'));
     eq('  체크리스트 카운트', d.getElementById('checklistCount').textContent, '1 / 8');

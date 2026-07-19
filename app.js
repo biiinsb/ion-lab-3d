@@ -540,6 +540,9 @@ function findCard(display) {
 }
 
 let zoneIonSeq = 0;
+// 완성 모달을 잠깐 늦춰 띄우는 동안 이온 구성이 바뀌면 그 예약을 무효화하는 표식.
+// 상태가 갱신될 때마다 올라가므로, 늦게 도착한 예약은 자기 번호가 최신인지 확인한다.
+let completeSeq = 0;
 
 function addIonToZone(card) {
     state.zoneIons.push({ id: ++zoneIonSeq, ...card });
@@ -587,6 +590,7 @@ function renderCompoundZone() {
 }
 
 function updateCompoundStatus() {
+    completeSeq++;   // 어떤 변화든 대기 중인 완성 모달 예약을 무효화한다
     const ions = state.zoneIons;
     const positive = ions.filter(i => i.charge > 0).reduce((s, i) => s + i.charge, 0);
     const negative = ions.filter(i => i.charge < 0).reduce((s, i) => s + i.charge, 0);
@@ -698,7 +702,16 @@ function onCompoundComplete(result) {
         state.zoneIons = [];
         renderCompoundZone();
     };
-    openModal('modalOverlay');
+
+    // 완성 모달이 정작 맞물린 모형을 가리지 않도록, 완성 순간(맞물림 + 축포)을
+    // 먼저 보여준 뒤 늦게 띄운다. 그 사이 이온을 바꾸거나 다른 화면으로 가면 띄우지 않는다.
+    const seq = completeSeq;
+    setTimeout(() => {
+        if (seq !== completeSeq) return;                 // 그새 구성이 바뀜
+        if (state.view !== 'compound') return;           // 화면을 떠남
+        if (Rules.evaluateCompound(state.zoneIons).status !== 'success') return;
+        openModal('modalOverlay');
+    }, 1400);
 }
 
 function buildChecklist() { renderChecklist(); }
