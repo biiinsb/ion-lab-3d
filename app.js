@@ -429,7 +429,17 @@ function showIonSuccessModal(result) {
 // 맞물리는 개수를 세면 그것이 그대로 최소 정수비가 된다.
 // (Ca²⁺의 홈 2개 ← Cl⁻의 돌기 1개 × 2 = CaCl₂)
 
-const PUZZLE = { bodyW: 126, h: 52, margin: 11, knob: 8.5, corner: 8 };
+// 세로 이음매 모델: 홈·돌기 하나가 세로 한 칸(slot)을 차지한다. 카드 높이 = 전하 × slot.
+// 그래야 양이온을 왼쪽·음이온을 오른쪽에 위로 정렬해 쌓았을 때, 두 열이 만나는 한 줄의
+// 이음매에서 홈과 돌기가 칸 단위로 정확히 맞물린다. (개수비 특수처리 없이 CaCl₂·Al₂O₃까지)
+const PUZZLE = { bodyW: 126, slot: 40, knob: 8.5, corner: 8 };
+
+/** 카드 한 장이 차지하는 크기. 음이온은 돌기가 왼쪽으로 knob만큼 튀어나와 그만큼 넓다. */
+function cardDims(card, type) {
+    const { bodyW, slot, knob } = PUZZLE;
+    const count = Math.abs(card.charge);
+    return { w: type === 'cation' ? bodyW : bodyW + knob, h: count * slot };
+}
 
 /**
  * 한쪽 변에 홈 또는 돌기가 달린 카드 외곽선을 SVG path로 만든다.
@@ -438,9 +448,12 @@ const PUZZLE = { bodyW: 126, h: 52, margin: 11, knob: 8.5, corner: 8 };
  * @param {'notch'|'knob'} type notch=안쪽으로 파임, knob=바깥으로 튀어나옴
  */
 function puzzlePath(count, side, type) {
-    const { bodyW: w, h, knob: k, corner: r } = PUZZLE;
+    const { bodyW: w, slot, knob: k, corner: r } = PUZZLE;
+    const h = count * slot;
+    // 홈·돌기는 각 칸의 한가운데. 칸 경계는 slot의 배수라, 카드를 위로 정렬해 쌓으면
+    // 양·음이온의 특징 y좌표가 열이 달라도 항상 같은 격자에 놓여 맞물린다.
     const ys = [];
-    for (let i = 0; i < count; i++) ys.push((h * (i + 1)) / (count + 1));
+    for (let i = 0; i < count; i++) ys.push(slot * (i + 0.5));
 
     // 원호의 sweep 방향이 볼록/오목을 가른다. 오른쪽 변은 위에서 아래로 훑으므로
     // sweep=1이면 바깥으로 부풀고, 왼쪽 변은 아래에서 위로 훑어 진행 방향이 반대다.
@@ -469,17 +482,19 @@ function puzzlePath(count, side, type) {
 
 /** 이온 카드 한 장의 마크업 (퍼즐 외곽선 + 그 위에 얹은 글자) */
 function ionCardMarkup(card, type) {
-    const { bodyW, h, margin } = PUZZLE;
+    const { knob } = PUZZLE;
     const count = Math.abs(card.charge);
     const isCation = type === 'cation';
     const path = puzzlePath(count, isCation ? 'right' : 'left', isCation ? 'notch' : 'knob');
-    const totalW = bodyW + margin * 2;
+    const { w, h } = cardDims(card, type);
+    // 음이온 돌기는 몸통 기준 x=-knob까지 나오므로, 몸통을 오른쪽으로 knob만큼 밀어 담는다.
+    const offsetX = isCation ? 0 : knob;
 
     return `
-        <svg class="puzzle" viewBox="0 0 ${totalW} ${h}" width="${totalW}" height="${h}" aria-hidden="true">
-            <g transform="translate(${margin} 0)"><path d="${path}" /></g>
+        <svg class="puzzle" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true">
+            <g transform="translate(${offsetX} 0)"><path d="${path}" /></g>
         </svg>
-        <span class="ion-body">
+        <span class="ion-body" style="left:${offsetX}px">
             <span class="ion-sym">${card.display}</span>
             <span class="ion-meta">
                 <span class="ion-kr">${card.koreanName}</span>
@@ -510,6 +525,9 @@ function renderCardList(container, cards, type) {
         btn.dataset.display = card.display;
         btn.title = cardHint(card, type);
         btn.setAttribute('aria-label', cardHint(card, type));
+        const { w, h } = cardDims(card, type);
+        btn.style.width = `${w}px`;
+        btn.style.height = `${h}px`;
         btn.innerHTML = ionCardMarkup(card, type);
         btn.addEventListener('click', () => addIonToZone(card));
         btn.addEventListener('dragstart', (e) => e.dataTransfer.setData('text/plain', card.display));
@@ -538,19 +556,32 @@ function renderCompoundZone() {
     holder.innerHTML = '';
     $('dropzoneEmpty').hidden = state.zoneIons.length > 0;
 
-    // 화학식과 같은 순서로 — 양이온을 먼저, 음이온을 나중에 (PRD 11.5)
-    // 그래야 양이온의 홈과 음이온의 돌기가 마주 보며 맞물린다.
-    const ordered = [...state.zoneIons].sort((a, b) => b.charge - a.charge);
-    ordered.forEach(ion => {
-        const type = ion.charge > 0 ? 'cation' : 'anion';
-        const el = document.createElement('div');
-        el.className = `zone-ion ${type}`;
-        el.title = cardHint(ion, type);
-        el.innerHTML = ionCardMarkup(ion, type) +
-            `<button class="zone-remove" aria-label="${ion.display} 제거">×</button>`;
-        el.querySelector('.zone-remove').addEventListener('click', () => removeIonFromZone(ion.id));
-        holder.appendChild(el);
-    });
+    // 양이온은 왼쪽 열, 음이온은 오른쪽 열로 나눠 위로 정렬해 쌓는다. 두 열이 만나는
+    // 이음매에서 왼쪽이 내미는 홈 개수(=총 양전하)와 오른쪽 돌기 개수(=총 음전하)가
+    // 칸 단위로 짝지어진다. 두 수가 같으면 빈틈 없이 맞물려 하나의 화합물이 된다.
+    const cations = state.zoneIons.filter(i => i.charge > 0);
+    const anions = state.zoneIons.filter(i => i.charge < 0);
+
+    const makeColumn = (ions, type, cls) => {
+        const col = document.createElement('div');
+        col.className = `seam-col ${cls}`;
+        ions.forEach(ion => {
+            const el = document.createElement('div');
+            el.className = `zone-ion ${type}`;
+            el.title = cardHint(ion, type);
+            const { w, h } = cardDims(ion, type);
+            el.style.width = `${w}px`;
+            el.style.height = `${h}px`;
+            el.innerHTML = ionCardMarkup(ion, type) +
+                `<button class="zone-remove" aria-label="${ion.display} 제거">×</button>`;
+            el.querySelector('.zone-remove').addEventListener('click', () => removeIonFromZone(ion.id));
+            col.appendChild(el);
+        });
+        return col;
+    };
+
+    if (cations.length) holder.appendChild(makeColumn(cations, 'cation', 'cations'));
+    if (anions.length) holder.appendChild(makeColumn(anions, 'anion', 'anions'));
 
     updateCompoundStatus();
 }
@@ -566,6 +597,8 @@ function updateCompoundStatus() {
     const result = Rules.evaluateCompound(ions);
     const status = $('sumStatus');
     status.classList.remove('is-ok', 'is-err');
+    // 빈틈 없이 맞물려 하나의 덩어리가 됐을 때만 이음매 둘레에 완성 신호를 준다.
+    $('dropzoneIons').classList.toggle('is-complete', result.status === 'success');
 
     if (result.status === 'idle') {
         status.textContent = '이온을 추가하세요';

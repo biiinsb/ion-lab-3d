@@ -454,10 +454,10 @@ body {
 
 .card-list { display: flex; flex-direction: column; gap: 8px; align-items: center; }
 
-/* 퍼즐 조각 이온 카드 — 외곽선은 SVG, 글자는 그 위에 HTML로 얹는다 */
+/* 퍼즐 조각 이온 카드 — 외곽선은 SVG, 글자는 그 위에 HTML로 얹는다.
+   크기(width·height)는 전하 크기에 따라 JS가 인라인으로 지정한다. */
 .ion-card {
     position: relative; flex: none;
-    width: 148px; height: 52px;
     padding: 0; border: 0; background: none;
     font: inherit; text-align: left; color: var(--ink);
     cursor: grab; user-select: none;
@@ -467,7 +467,9 @@ body {
 .ion-card:active { cursor: grabbing; }
 .ion-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 8px; }
 
-.puzzle { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+/* overflow visible — 칸을 빈틈없이 쌓으려 뷰박스에 여백을 두지 않으므로 외곽선 stroke가
+   살짝 넘칠 수 있다. 잘리지 않게 한다. */
+.puzzle { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
 .puzzle path { stroke-width: 1.5; }
 
 .cation .puzzle path { fill: #fbe9e9; stroke: #d98d8d; }
@@ -479,8 +481,8 @@ body {
     display: flex; align-items: center; justify-content: space-between;
     gap: 6px; pointer-events: none;
 }
-.cation .ion-body { padding: 0 28px 0 16px; }
-.anion .ion-body { padding: 0 14px 0 26px; }
+.cation .ion-body { padding: 0 24px 0 14px; }
+.anion .ion-body { padding: 0 12px 0 22px; }
 
 /* 선택자를 .ion-card로 한정하지 않는다 — 같은 마크업을 결합 영역(.zone-ion)에서도 쓴다. */
 .ion-sym { font-size: 17px; font-weight: 700; white-space: nowrap; }
@@ -510,29 +512,40 @@ body {
 .dropzone.is-hover { border-color: var(--accent); background: #f2f7fe; }
 .dropzone-empty { font-size: 12.5px; color: var(--muted); text-align: center; max-width: 340px; }
 .dropzone-empty[hidden] { display: none; }
-/* 결합 영역 — 양이온을 먼저, 음이온을 나중에 놓아 홈과 돌기가 마주 보게 한다.
-   음수 마진으로 조각이 실제로 맞물려 보이게 만든다. */
+/* 결합 영역 — 양이온 열(왼쪽)과 음이온 열(오른쪽)을 위로 정렬해 이음매에서 맞물린다.
+   두 열의 홈·돌기 개수가 같으면 빈틈 없이 하나의 덩어리가 되고, 다르면 아래쪽에
+   짝 없는 홈/돌기가 그대로 드러나 '무엇이 남았는지'가 눈에 보인다. */
 .dropzone-ions {
-    display: flex; flex-wrap: wrap; gap: 10px 0;
-    justify-content: center; align-items: center;
+    display: flex; align-items: flex-start; justify-content: center;
+    border-radius: 12px; transition: box-shadow .2s, background .2s; padding: 6px;
 }
+/* 완성(총전하 0) — 맞물린 덩어리 전체를 감싸는 완성 신호 */
+.dropzone-ions.is-complete {
+    background: var(--ok-bg);
+    box-shadow: 0 0 0 2px #b8ddc8, 0 6px 16px rgba(31,95,67,.16);
+}
+
+.seam-col { display: flex; flex-direction: column; }
+/* 음이온 열을 knob(8.5px)만큼 왼쪽으로 당겨 돌기가 양이온 홈에 실제로 들어가게 한다. */
+.seam-col.anions { margin-left: -8.5px; }
 
 .zone-ion {
     position: relative; flex: none;
-    width: 148px; height: 52px;
     animation: pop .18s ease-out;
 }
-.zone-ion + .zone-ion { margin-left: -9px; }
 
 @keyframes pop { from { transform: scale(.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
 .zone-ion .zone-remove {
-    position: absolute; top: -4px; right: 4px; z-index: 2;
+    position: absolute; top: -4px; z-index: 2;
     width: 18px; height: 18px; display: grid; place-items: center;
     border: 1px solid var(--line-2); border-radius: 50%; cursor: pointer;
     background: #fff; color: var(--ink-2);
     font: inherit; font-size: 11px; line-height: 1;
 }
+/* 삭제 버튼은 이음매(특징이 있는 변)를 가리지 않도록 각 이온의 바깥 모서리에 둔다. */
+.zone-ion.cation .zone-remove { left: 2px; }
+.zone-ion.anion .zone-remove { right: 4px; }
 .zone-ion .zone-remove:hover { background: var(--err); color: #fff; border-color: var(--err); }
 
 .charge-sum {
